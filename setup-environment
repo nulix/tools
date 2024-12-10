@@ -1,0 +1,204 @@
+# vim: ft=sh
+set -o pipefail
+
+RED="\\e[31m"
+YELLOW="\\e[33m"
+BLUE="\\e[34m"
+WHITE="\\e[37m"
+NC="\\e[0m"
+THIS_DIR=$(dirname "$0")
+
+LOG_ERR() {
+  echo -e "${RED}ERROR:${NC} ${@}"
+}
+
+LOG_WRN() {
+  echo -e "${YELLOW}WARNING:${NC} ${@}"
+}
+
+LOG_INF() {
+  echo -e "${BLUE}INFO:${NC} ${@}"
+}
+
+LOG_DBG() {
+  echo -e "${WHITE}DEBUG:${NC} ${@}"
+}
+
+###
+### Function to build BSP
+###
+build_bsp() {
+  LOG_INF "Starting BSP build..."
+
+  cd ${THIS_DIR}/../bsp
+  docker build -f Dockerfile.rpi . -o . || return
+  mkdir -p ../out
+  mv boot-artifacts-*.tar.gz ../out
+  mv kernel-artifacts-*.tar.gz ../out
+  mv kernel-modules-*.tar.gz ../out
+  cd ..
+
+  # TODO: make this better?
+  cp out/kernel-artifacts-*.tar.gz rootfs/machine/rpi
+  cp out/kernel-modules-*.tar.gz rootfs/machine/rpi
+
+  LOG_INF "BSP built!"
+}
+
+###
+### Function to build rootfs tar.gz
+###
+build_rootfs() {
+  LOG_INF "Starting rootfs build..."
+
+  cd ${THIS_DIR}/../rootfs
+  docker build -o - . | gzip > nulix-rootfs-1.0.0.tar.gz || return
+  mkdir -p ../out
+  # TODO: rootfs image is needed in this dir for the ostree_repo build,
+  # try to use it from the out dir instead
+  cp nulix-rootfs-*.tar.gz ../out
+  cd ..
+
+  LOG_INF "Root filesystem built!"
+}
+
+###
+### Function to build rootfs docker image, useful for testing:
+###  $ docker run --rm -it nulix-rootfs:1.0.0
+###
+build_rootfs_docker_image() {
+  LOG_INF "Starting rootfs docker image build..."
+
+  cd ${THIS_DIR}/../rootfs
+  docker build -t nulix-rootfs:1.0.0 . || return
+  cd ..
+
+  LOG_INF "Root filesystem docker image built!"
+}
+
+###
+### Function to build OSTree repo
+###
+build_ostree_repo() {
+  LOG_INF "Starting OSTree repo build..."
+
+  cd ${THIS_DIR}/../rootfs
+  docker build -f Dockerfile.ostree_repo . -o . || return
+  mkdir -p ../out
+  # TODO: the ostree_repo dir is needed for next build to keep
+  # the commit history, try to use it from the out dir instead
+  rm -rf ../out/ostree_repo ../out/ostree_manifest
+  cp -r ostree_repo ostree_manifest ../out
+  cd ..
+
+  LOG_INF "OSTree repo built!"
+}
+
+###
+### Function to create bootable disk image
+###
+mk_image() {
+  if [ ! -d /dev/loop ]; then
+    LOG_WRN "loop device not found, aborting bootable image build!\n \
+        Use Linux host with loop device support."
+    return 0
+  fi
+
+  LOG_INF "Starting bootable image build..."
+
+  mk-image-ostree.sh || return
+
+  LOG_INF "Bootable disk image built!"
+}
+
+###
+### Function to clean docker build cache and out directory
+###
+clean_all() {
+  rm -rf out
+  docker builder prune -af || return
+  LOG_INF "Project cleaned!"
+}
+
+###
+### Print general usage
+###
+usage() {
+  echo "Usage: nulix {build|clean-all}"
+}
+
+###
+### Print usage for build sub-command
+###
+usage_build() {
+  echo "Usage: nulix build {bsp|rootfs|rootfs-docker-image|os|ostree-repo}"
+}
+
+###
+### Check dependencies
+###
+init() {
+  if ! which docker &> /dev/null; then
+    LOG_ERR "docker is not installed!"
+    return -1
+  fi
+
+  if [ ! -d $THIS_DIR/../bsp ]; then
+    LOG_ERR "bsp source directory not found!"
+    return -1
+  fi
+
+  if [ ! -d $THIS_DIR/../rootfs ]; then
+    LOG_ERR "rootfs source directory not found!"
+    return -1
+  fi
+
+  if [ ! -d $THIS_DIR/../tools ]; then
+    LOG_ERR "tools source directory not found!"
+    return -1
+  fi
+}
+
+init || return -1
+
+###
+### Main command handler
+###
+nulix() {
+  case "$1" in
+    build)
+      case "$2" in
+        bsp)
+          build_bsp
+          ;;
+        rootfs)
+          build_rootfs
+          ;;
+        rootfs-docker-image)
+          build_rootfs_docker_image
+          ;;
+        os)
+          build_bsp &&
+          build_rootfs &&
+          build_ostree_repo &&
+          mk_image
+          ;;
+        *)
+          LOG_ERR "Unknown build target: $2\n"
+          usage_build
+          ;;
+      esac
+      ;;
+    clean-all)
+      clean_all
+      ;;
+    help)
+      usage
+      ;;
+    *)
+      LOG_ERR "Unknown command: $1\n"
+      usage
+      ;;
+  esac
+}
+
