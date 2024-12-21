@@ -1,4 +1,4 @@
-# vim: ft=sh
+# vim: set ft=sh:
 set -o pipefail
 
 RED="\\e[31m"
@@ -6,7 +6,7 @@ YELLOW="\\e[33m"
 BLUE="\\e[34m"
 WHITE="\\e[37m"
 NC="\\e[0m"
-THIS_DIR=$(dirname "$0")
+THIS_DIR=$(pwd)
 
 LOG_ERR() {
   echo -e "${RED}ERROR:${NC} ${@}"
@@ -30,7 +30,7 @@ LOG_DBG() {
 build_bsp() {
   LOG_INF "Starting BSP build..."
 
-  cd ${THIS_DIR}/../bsp
+  cd ${THIS_DIR}/bsp
   docker build -f Dockerfile.rpi . -o . || return
   mkdir -p ../out
   mv boot-artifacts-*.tar.gz ../out
@@ -51,7 +51,7 @@ build_bsp() {
 build_rootfs() {
   LOG_INF "Starting rootfs build..."
 
-  cd ${THIS_DIR}/../rootfs
+  cd ${THIS_DIR}/rootfs
   docker build -o - . | gzip > nulix-rootfs-1.0.0.tar.gz || return
   mkdir -p ../out
   # TODO: rootfs image is needed in this dir for the ostree_repo build,
@@ -69,7 +69,7 @@ build_rootfs() {
 build_rootfs_docker_image() {
   LOG_INF "Starting rootfs docker image build..."
 
-  cd ${THIS_DIR}/../rootfs
+  cd ${THIS_DIR}/rootfs
   docker build -t nulix-rootfs:1.0.0 . || return
   cd ..
 
@@ -82,7 +82,7 @@ build_rootfs_docker_image() {
 build_ostree_repo() {
   LOG_INF "Starting OSTree repo build..."
 
-  cd ${THIS_DIR}/../rootfs
+  cd ${THIS_DIR}/rootfs
   docker build -f Dockerfile.ostree_repo . -o . || return
   mkdir -p ../out
   # TODO: the ostree_repo dir is needed for next build to keep
@@ -98,15 +98,19 @@ build_ostree_repo() {
 ### Function to create bootable disk image
 ###
 mk_image() {
-  if [ ! -d /dev/loop ]; then
-    LOG_WRN "loop device not found, aborting bootable image build!\n \
-        Use Linux host with loop device support."
-    return 0
+  if [ ! -d "${THIS_DIR}/out" ]; then
+    LOG_ERR "out directory not found, can't proceed!"
+    return -1
   fi
 
-  LOG_INF "Starting bootable image build..."
+  LOG_INF "Starting disk image build..."
 
-  mk-image-ostree.sh || return
+  rm -rf ${THIS_DIR}/out/Dockerfile.disk-image
+  cp ${THIS_DIR}/tools/Dockerfile.disk-image ${THIS_DIR}/out
+  cd ${THIS_DIR}/out
+  docker build -f Dockerfile.disk-image . -o . || return
+  rm Dockerfile.disk-image
+  cd ..
 
   LOG_INF "Bootable disk image built!"
 }
@@ -116,6 +120,7 @@ mk_image() {
 ###
 clean_all() {
   rm -rf out
+  # TODO: use dedicated docker build context!
   docker builder prune -af || return
   LOG_INF "Project cleaned!"
 }
@@ -131,7 +136,7 @@ usage() {
 ### Print usage for build sub-command
 ###
 usage_build() {
-  echo "Usage: nulix build {bsp|rootfs|rootfs-docker-image|os|ostree-repo}"
+  echo "Usage: nulix build {bsp|rootfs|rootfs-docker-image|ostree-repo|os}"
 }
 
 ###
@@ -143,17 +148,17 @@ init() {
     return -1
   fi
 
-  if [ ! -d $THIS_DIR/../bsp ]; then
+  if [ ! -d "$THIS_DIR/bsp" ]; then
     LOG_ERR "bsp source directory not found!"
     return -1
   fi
 
-  if [ ! -d $THIS_DIR/../rootfs ]; then
+  if [ ! -d "$THIS_DIR/rootfs" ]; then
     LOG_ERR "rootfs source directory not found!"
     return -1
   fi
 
-  if [ ! -d $THIS_DIR/../tools ]; then
+  if [ ! -d "$THIS_DIR/tools" ]; then
     LOG_ERR "tools source directory not found!"
     return -1
   fi
@@ -182,6 +187,9 @@ nulix() {
           build_rootfs &&
           build_ostree_repo &&
           mk_image
+          ;;
+        help)
+          usage_build
           ;;
         *)
           LOG_ERR "Unknown build target: $2\n"
