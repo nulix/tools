@@ -182,6 +182,11 @@ nulix() {
         rootfs-docker-image)
           build_rootfs_docker_image
           ;;
+        ostree-repo)
+          build_bsp &&
+          build_rootfs &&
+          build_ostree_repo
+          ;;
         os)
           build_bsp &&
           build_rootfs &&
