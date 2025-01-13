@@ -17,7 +17,7 @@ FROM ubuntu AS build
 ARG OSTREE_REPO="ostree_repo"
 ARG OSTREE_MANIFEST="ostree_manifest"
 ARG OTA_SYSROOT="ota-sysroot"
-ARG OSTREE_BRANCHNAME="main"
+ARG OSTREE_BRANCHNAME="1/stable/rpi3"
 ARG OSTREE_OSNAME="nulix"
 ARG BOOT_FILES_OUT_ARCHIVE="boot-artifacts-*.tar.gz"
 ARG BOOT_FILES_ARCHIVE="boot-artifacts.tar.gz"
