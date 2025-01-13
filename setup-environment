@@ -87,8 +87,9 @@ build_ostree_repo() {
   mkdir -p ../out
   # TODO: the ostree_repo dir is needed for next build to keep
   # the commit history, try to use it from the out dir instead
-  rm -rf ../out/ostree_repo ../out/ostree_manifest
-  cp -r ostree_repo ostree_manifest ../out
+  rm -rf ../out/ostree_repo ../out/ostree_manifest ../out/ostree_repo.tar.gz
+  cp -r ostree_repo ../out
+  mv ostree_repo.tar.gz ostree_manifest ../out
   cd ..
 
   LOG_INF "OSTree repo built!"
