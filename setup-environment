@@ -31,6 +31,7 @@ build_bsp() {
   LOG_INF "Starting $MACHINE BSP build..."
 
   cd ${THIS_DIR}/bsp
+
   docker build -f Dockerfile.$MACHINE . -o . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg ARCH="$MACHINE_ARCH" \
@@ -42,6 +43,10 @@ build_bsp() {
     --build-arg KERNEL_DEFCONFIG="$KERNEL_DEFCONFIG" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
     || return
+
+  rm -f ../build/deploy/$MACHINE/boot-artifacts-*.tar.gz \
+    ../build/deploy/$MACHINE/kernel-artifacts-*.tar.gz \
+    ../build/deploy/$MACHINE/kernel-modules-*.tar.gz
   mv boot-artifacts-*.tar.gz ../build/deploy/$MACHINE
   mv kernel-artifacts-*.tar.gz ../build/deploy/$MACHINE
   mv kernel-modules-*.tar.gz ../build/deploy/$MACHINE
@@ -61,6 +66,8 @@ build_rootfs() {
   LOG_INF "Starting $MACHINE rootfs build..."
 
   cd ${THIS_DIR}/rootfs
+  rm -f nulix-rootfs-*.tar.gz
+
   docker build -o - . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg HOSTNAME="$HOSTNAME" \
@@ -73,6 +80,8 @@ build_rootfs() {
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
     | gzip > nulix-rootfs-$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH.tar.gz \
     || return
+
+  rm -f ../build/deploy/$MACHINE/nulix-rootfs-*.tar.gz
   # TODO: rootfs image is needed in this dir for the ostree_repo build,
   # try to use it from the build dir instead
   cp nulix-rootfs-*.tar.gz ../build/deploy/$MACHINE
@@ -89,6 +98,7 @@ build_rootfs_docker_image() {
   LOG_INF "Starting $MACHINE rootfs docker image build..."
 
   cd ${THIS_DIR}/rootfs
+
   docker build . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg HOSTNAME="$HOSTNAME" \
@@ -101,6 +111,7 @@ build_rootfs_docker_image() {
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
     -t nulix-rootfs:$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH \
     || return
+
   cd ${THIS_DIR}
 
   LOG_INF "Root filesystem docker image built!"
@@ -113,6 +124,7 @@ build_ostree_repo() {
   LOG_INF "Starting $MACHINE OSTree repo build..."
 
   cd ${THIS_DIR}/rootfs
+
   docker build -f Dockerfile.ostree_repo . -o . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
@@ -123,6 +135,7 @@ build_ostree_repo() {
     --build-arg OSTREE_ROOTFS="$OSTREE_ROOTFS" \
     --build-arg OSTREE_UPDATE_SUMMARY="$OSTREE_SUMMARY" \
     || return
+
   # TODO: the $OSTREE_REPO dir is needed for next build to keep
   # the commit history, try to use it from the build dir instead
   rm -rf ../build/deploy/$MACHINE/$OSTREE_REPO \
@@ -146,17 +159,23 @@ mk_image() {
 
   LOG_INF "Starting $MACHINE disk image build..."
 
-  rm -f ${THIS_DIR}/build/deploy/$MACHINE/Dockerfile.disk-image
-  cp ${THIS_DIR}/tools/Dockerfile.disk-image ${THIS_DIR}/build/deploy/$MACHINE
+
   cd ${THIS_DIR}/build/deploy/$MACHINE
+  rm -f Dockerfile.disk-image \
+    nulix-os*.img.bz2
+  cp ${THIS_DIR}/tools/Dockerfile.disk-image .
+
   docker build -f Dockerfile.disk-image . -o . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
+    --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
+    --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
     --build-arg OSTREE_REPO="$OSTREE_REPO" \
     --build-arg OSTREE_MANIFEST="$OSTREE_MANIFEST" \
     --build-arg OTA_SYSROOT="$OSTREE_OTA_SYSROOT" \
     --build-arg OSTREE_OSNAME="$OSTREE_OSNAME" \
     || return
+
   rm Dockerfile.disk-image
   cd ${THIS_DIR}
 
@@ -368,6 +387,7 @@ nulix() {
       ;;
     help)
       usage
+      return 0
       ;;
     *)
       LOG_ERR "Unknown command: $cmd"
