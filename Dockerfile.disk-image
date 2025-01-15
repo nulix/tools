@@ -13,28 +13,30 @@
 ###
 FROM ubuntu AS build
 
-# defaults
-ARG OSTREE_REPO="ostree_repo"
-ARG OSTREE_MANIFEST="ostree_manifest"
-ARG OTA_SYSROOT="ota-sysroot"
-ARG OSTREE_BRANCHNAME="1/stable/rpi3"
-ARG OSTREE_OSNAME="nulix"
-ARG BOOT_FILES_OUT_ARCHIVE="boot-artifacts-*.tar.gz"
-ARG BOOT_FILES_ARCHIVE="boot-artifacts.tar.gz"
-ARG KERNEL_ARTIFACTS_OUT_ARCHIVE="kernel-artifacts-*.tar.gz"
-ARG KERNEL_ARTIFACTS_ARCHIVE="kernel-artifacts.tar.gz"
-ARG ROOTFS_ARCHIVE="nulix-rootfs-*.tar.gz"
-ARG IMAGE_FILE="nulix-os"
-
 # install build tools
 RUN apt update && \
     apt install -y ostree libguestfs-tools linux-image-generic
 
+# defaults
+ARG MACHINE
+ARG DISTRO_VERSION_MAJOR
+ARG OSTREE_REPO
+ARG OSTREE_MANIFEST
+ARG OSTREE_BRANCHNAME="$DISTRO_VERSION_MAJOR/stable/$MACHINE"
+ARG OTA_SYSROOT
+ARG OSTREE_OSNAME
+ARG BOOT_FILES_DEPLOY_ARCHIVE="boot-artifacts-*.tar.gz"
+ARG BOOT_FILES_ARCHIVE="boot-artifacts.tar.gz"
+ARG KERNEL_ARTIFACTS_DEPLOY_ARCHIVE="kernel-artifacts-*.tar.gz"
+ARG KERNEL_ARTIFACTS_ARCHIVE="kernel-artifacts.tar.gz"
+ARG ROOTFS_ARCHIVE="nulix-rootfs-*.tar.gz"
+ARG IMAGE_FILE="nulix-os"
+
 # copy dependencies
 COPY ${OSTREE_REPO} /${OSTREE_REPO}/
 COPY ${OSTREE_MANIFEST} /
-COPY ${BOOT_FILES_OUT_ARCHIVE} /${BOOT_FILES_ARCHIVE}
-COPY ${KERNEL_ARTIFACTS_OUT_ARCHIVE} /${KERNEL_ARTIFACTS_ARCHIVE}
+COPY ${BOOT_FILES_DEPLOY_ARCHIVE} /${BOOT_FILES_ARCHIVE}
+COPY ${KERNEL_ARTIFACTS_DEPLOY_ARCHIVE} /${KERNEL_ARTIFACTS_ARCHIVE}
 COPY ${ROOTFS_ARCHIVE} /
 
 # determine OS version
@@ -46,7 +48,7 @@ RUN mkdir -p ${OTA_SYSROOT}
 RUN ostree admin --sysroot=${OTA_SYSROOT} init-fs --modern ${OTA_SYSROOT} && \
     ostree admin --sysroot=${OTA_SYSROOT} os-init ${OSTREE_OSNAME}
 
-# Preparation required to steer ostree bootloader detection \
+# Preparation required to steer ostree bootloader detection
 RUN mkdir -p ${OTA_SYSROOT}/boot/loader.0 && \
     ln -s loader.0 ${OTA_SYSROOT}/boot/loader && \
     touch ${OTA_SYSROOT}/boot/loader/uEnv.txt

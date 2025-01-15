@@ -6,7 +6,7 @@ YELLOW="\\e[33m"
 BLUE="\\e[34m"
 WHITE="\\e[37m"
 NC="\\e[0m"
-THIS_DIR=$(pwd)
+THIS_DIR="$(pwd)"
 
 LOG_ERR() {
   echo -e "${RED}ERROR:${NC} ${@}"
@@ -28,19 +28,28 @@ LOG_DBG() {
 ### Function to build BSP
 ###
 build_bsp() {
-  LOG_INF "Starting BSP build..."
+  LOG_INF "Starting $MACHINE BSP build..."
 
   cd ${THIS_DIR}/bsp
-  docker build -f Dockerfile.rpi . -o . || return
-  mkdir -p ../out
-  mv boot-artifacts-*.tar.gz ../out
-  mv kernel-artifacts-*.tar.gz ../out
-  mv kernel-modules-*.tar.gz ../out
-  cd ..
+  docker build -f Dockerfile.$MACHINE . -o . \
+    --build-arg MACHINE="$MACHINE" \
+    --build-arg ARCH="$MACHINE_ARCH" \
+    --build-arg UBOOT_REPO="$UBOOT_REPO" \
+    --build-arg UBOOT_BRANCH="$UBOOT_BRANCH" \
+    --build-arg UBOOT_DEFCONFIG="$UBOOT_DEFCONFIG" \
+    --build-arg KERNEL_REPO="$KERNEL_REPO" \
+    --build-arg KERNEL_BRANCH="$KERNEL_BRANCH" \
+    --build-arg KERNEL_DEFCONFIG="$KERNEL_DEFCONFIG" \
+    --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
+    || return
+  mv boot-artifacts-*.tar.gz ../build/deploy/$MACHINE
+  mv kernel-artifacts-*.tar.gz ../build/deploy/$MACHINE
+  mv kernel-modules-*.tar.gz ../build/deploy/$MACHINE
+  cd ${THIS_DIR}
 
   # TODO: make this better?
-  cp out/kernel-artifacts-*.tar.gz rootfs/machine/rpi
-  cp out/kernel-modules-*.tar.gz rootfs/machine/rpi
+  cp build/deploy/$MACHINE/kernel-artifacts-*.tar.gz rootfs/machine/$MACHINE
+  cp build/deploy/$MACHINE/kernel-modules-*.tar.gz rootfs/machine/$MACHINE
 
   LOG_INF "BSP built!"
 }
@@ -49,15 +58,25 @@ build_bsp() {
 ### Function to build rootfs tar.gz
 ###
 build_rootfs() {
-  LOG_INF "Starting rootfs build..."
+  LOG_INF "Starting $MACHINE rootfs build..."
 
   cd ${THIS_DIR}/rootfs
-  docker build -o - . | gzip > nulix-rootfs-1.0.0.tar.gz || return
-  mkdir -p ../out
+  docker build -o - . \
+    --build-arg MACHINE="$MACHINE" \
+    --build-arg HOSTNAME="$HOSTNAME" \
+    --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
+    --build-arg VIRT_BACKEND="$VIRT_BACKEND" \
+    --build-arg SERIAL_PORT="$SERIAL_PORT" \
+    --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
+    --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
+    --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
+    --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
+    | gzip > nulix-rootfs-$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH.tar.gz \
+    || return
   # TODO: rootfs image is needed in this dir for the ostree_repo build,
-  # try to use it from the out dir instead
-  cp nulix-rootfs-*.tar.gz ../out
-  cd ..
+  # try to use it from the build dir instead
+  cp nulix-rootfs-*.tar.gz ../build/deploy/$MACHINE
+  cd ${THIS_DIR}
 
   LOG_INF "Root filesystem built!"
 }
@@ -67,11 +86,22 @@ build_rootfs() {
 ###  $ docker run --rm -it nulix-rootfs:1.0.0
 ###
 build_rootfs_docker_image() {
-  LOG_INF "Starting rootfs docker image build..."
+  LOG_INF "Starting $MACHINE rootfs docker image build..."
 
   cd ${THIS_DIR}/rootfs
-  docker build -t nulix-rootfs:1.0.0 . || return
-  cd ..
+  docker build . \
+    --build-arg MACHINE="$MACHINE" \
+    --build-arg HOSTNAME="$HOSTNAME" \
+    --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
+    --build-arg VIRT_BACKEND="$VIRT_BACKEND" \
+    --build-arg SERIAL_PORT="$SERIAL_PORT" \
+    --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
+    --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
+    --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
+    --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
+    -t nulix-rootfs:$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH \
+    || return
+  cd ${THIS_DIR}
 
   LOG_INF "Root filesystem docker image built!"
 }
@@ -80,17 +110,27 @@ build_rootfs_docker_image() {
 ### Function to build OSTree repo
 ###
 build_ostree_repo() {
-  LOG_INF "Starting OSTree repo build..."
+  LOG_INF "Starting $MACHINE OSTree repo build..."
 
   cd ${THIS_DIR}/rootfs
-  docker build -f Dockerfile.ostree_repo . -o . || return
-  mkdir -p ../out
-  # TODO: the ostree_repo dir is needed for next build to keep
-  # the commit history, try to use it from the out dir instead
-  rm -rf ../out/ostree_repo ../out/ostree_manifest ../out/ostree_repo.tar.gz
-  cp -r ostree_repo ../out
-  mv ostree_repo.tar.gz ostree_manifest ../out
-  cd ..
+  docker build -f Dockerfile.ostree_repo . -o . \
+    --build-arg MACHINE="$MACHINE" \
+    --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
+    --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
+    --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
+    --build-arg OSTREE_REPO="$OSTREE_REPO" \
+    --build-arg OSTREE_MANIFEST="$OSTREE_MANIFEST" \
+    --build-arg OSTREE_ROOTFS="$OSTREE_ROOTFS" \
+    --build-arg OSTREE_UPDATE_SUMMARY="$OSTREE_SUMMARY" \
+    || return
+  # TODO: the $OSTREE_REPO dir is needed for next build to keep
+  # the commit history, try to use it from the build dir instead
+  rm -rf ../build/deploy/$MACHINE/$OSTREE_REPO \
+    ../build/deploy/$MACHINE/$OSTREE_MANIFEST \
+    ../build/deploy/$MACHINE/$OSTREE_REPO.tar.gz
+  cp -r $OSTREE_REPO ../build/deploy/$MACHINE
+  mv $OSTREE_REPO.tar.gz $OSTREE_MANIFEST ../build/deploy/$MACHINE
+  cd ${THIS_DIR}
 
   LOG_INF "OSTree repo built!"
 }
@@ -99,31 +139,43 @@ build_ostree_repo() {
 ### Function to create bootable disk image
 ###
 mk_image() {
-  if [ ! -d "${THIS_DIR}/out" ]; then
-    LOG_ERR "out directory not found, can't proceed!"
+  if [ ! -d "${THIS_DIR}/build/deploy/$MACHINE" ]; then
+    LOG_ERR "deploy directory not found, can't proceed!"
     return -1
   fi
 
-  LOG_INF "Starting disk image build..."
+  LOG_INF "Starting $MACHINE disk image build..."
 
-  rm -rf ${THIS_DIR}/out/Dockerfile.disk-image
-  cp ${THIS_DIR}/tools/Dockerfile.disk-image ${THIS_DIR}/out
-  cd ${THIS_DIR}/out
-  docker build -f Dockerfile.disk-image . -o . || return
+  rm -f ${THIS_DIR}/build/deploy/$MACHINE/Dockerfile.disk-image
+  cp ${THIS_DIR}/tools/Dockerfile.disk-image ${THIS_DIR}/build/deploy/$MACHINE
+  cd ${THIS_DIR}/build/deploy/$MACHINE
+  docker build -f Dockerfile.disk-image . -o . \
+    --build-arg MACHINE="$MACHINE" \
+    --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
+    --build-arg OSTREE_REPO="$OSTREE_REPO" \
+    --build-arg OSTREE_MANIFEST="$OSTREE_MANIFEST" \
+    --build-arg OTA_SYSROOT="$OSTREE_OTA_SYSROOT" \
+    --build-arg OSTREE_OSNAME="$OSTREE_OSNAME" \
+    || return
   rm Dockerfile.disk-image
-  cd ..
+  cd ${THIS_DIR}
 
   LOG_INF "Bootable disk image built!"
 }
 
 ###
-### Function to clean docker build cache and out directory
+### Function to clean docker build cache and build directory
 ###
 clean_all() {
-  rm -rf out
+  rm -rf ${THIS_DIR}/build/conf \
+    ${THIS_DIR}/build/deploy/$MACHINE \
+    ${THIS_DIR}/rootfs/$OSTREE_REPO \
+    ${THIS_DIR}/rootfs/$OSTREE_MANIFES
+
   # TODO: use dedicated docker build context!
   docker builder prune -af || return
-  LOG_INF "Project cleaned!"
+
+  LOG_INF "Project for $MACHINE cleaned!"
 }
 
 ###
@@ -163,45 +215,153 @@ init() {
     LOG_ERR "tools source directory not found!"
     return -1
   fi
+
+  # set machine
+  DEFAULT_MACHINE="rpi3"
+  if [ -z "$MACHINE" ]; then
+    MACHINE="$DEFAULT_MACHINE"
+  fi
+
+  if [ ! -f "$THIS_DIR/tools/machine/$MACHINE.yaml" ]; then
+    LOG_WRN "machine file not found for $MACHINE, defaulting to $DEFAULT_MACHINE"
+    MACHINE="$DEFAULT_MACHINE"
+  fi
+
+  # set distro
+  DEFAULT_DISTRO="nulix-docker"
+  if [ -z "$DISTRO" ]; then
+    DISTRO="$DEFAULT_DISTRO"
+  fi
+
+  if [ ! -f "$THIS_DIR/tools/distro/$DISTRO.yaml" ]; then
+    LOG_WRN "distro file not found for $DISTRO, defaulting to $DEFAULT_DISTRO"
+    DISTRO="$DEFAULT_DISTRO"
+  fi
+
+  LOG_INF "MACHINE=$MACHINE"
+  LOG_INF "DISTRO=$DISTRO"
+
+  # init build directory
+  mkdir -p "$THIS_DIR/build"
+  mkdir -p "$THIS_DIR/build/conf"
+  mkdir -p "$THIS_DIR/build/deploy"
+  mkdir -p "$THIS_DIR/build/deploy/$MACHINE"
+  rm -f "$THIS_DIR/build/conf/local.conf"
+}
+
+###
+### yq wrapper function
+###
+yq() {
+  docker run --rm -v "${THIS_DIR}":/workdir mikefarah/yq -e "$@"
+}
+
+###
+### Set parsed config to local file
+###
+set_conf() {
+  LOG_DBG "$@"
+  echo "$@" >> "$THIS_DIR/build/conf/local.conf"
+}
+
+###
+### Set machine settings
+###
+parse_machine() {
+  MACHINE_FILE="tools/machine/$MACHINE.yaml"
+
+  # read values from $MACHINE_FILE
+  MACHINE=$(yq ".machine.name" $MACHINE_FILE) || return
+  MACHINE_ARCH=$(yq ".machine.arch" $MACHINE_FILE) || return
+  MACHINE_OWNER=$(yq ".machine.owner" $MACHINE_FILE) || return
+  HOSTNAME=$(yq ".machine.hostname" $MACHINE_FILE) || return
+  UBOOT_REPO=$(yq ".machine.uboot.repo" $MACHINE_FILE) || return
+  UBOOT_BRANCH=$(yq ".machine.uboot.branch" $MACHINE_FILE) || return
+  UBOOT_DEFCONFIG=$(yq ".machine.uboot.defconfig" $MACHINE_FILE) || return
+  KERNEL_REPO=$(yq ".machine.kernel.repo" $MACHINE_FILE) || return
+  KERNEL_BRANCH=$(yq ".machine.kernel.branch" $MACHINE_FILE) || return
+  KERNEL_DEFCONFIG=$(yq ".machine.kernel.defconfig" $MACHINE_FILE) || return
+  KERNEL_IMAGE=$(yq ".machine.kernel.image" $MACHINE_FILE) || return
+  SERIAL_PORT=$(yq ".machine.serial.port" $MACHINE_FILE) || return
+  SERIAL_BAUD=$(yq ".machine.serial.baud" $MACHINE_FILE) || return
+
+  set_conf "MACHINE=$MACHINE"
+  set_conf "MACHINE_ARCH=$MACHINE_ARCH"
+  set_conf "MACHINE_OWNER=$MACHINE_OWNER"
+  set_conf "HOSTNAME=$HOSTNAME"
+  set_conf "UBOOT_REPO=$UBOOT_REPO"
+  set_conf "UBOOT_BRANCH=$UBOOT_BRANCH"
+  set_conf "UBOOT_DEFCONFIG=$UBOOT_DEFCONFIG"
+  set_conf "KERNEL_REPO=$KERNEL_REPO"
+  set_conf "KERNEL_BRANCH=$KERNEL_BRANCH"
+  set_conf "KERNEL_DEFCONFIG=$KERNEL_DEFCONFIG"
+  set_conf "KERNEL_IMAGE=$KERNEL_IMAGE"
+  set_conf "SERIAL_PORT=$SERIAL_PORT"
+  set_conf "SERIAL_BAUD=$SERIAL_BAUD"
+}
+
+###
+### Set distro settings
+###
+parse_distro() {
+  DISTRO_FILE="tools/distro/$DISTRO.yaml"
+
+  # read values from $DISTRO_FILE
+  ROOTFS_BASE=$(yq ".distro.rootfs" $DISTRO_FILE) || return
+  VIRT_BACKEND=$(yq ".distro.virt.backend" $DISTRO_FILE) || return
+  OSTREE_REPO=$(yq ".distro.ostree.repo" $DISTRO_FILE) || return
+  OSTREE_MANIFEST=$(yq ".distro.ostree.manifest" $DISTRO_FILE) || return
+  OSTREE_ROOTFS=$(yq ".distro.ostree.rootfs" $DISTRO_FILE) || return
+  OSTREE_SUMMARY=$(yq ".distro.ostree.summary" $DISTRO_FILE) || return
+  OSTREE_OTA_SYSROOT=$(yq ".distro.ostree.ota-sysroot" $DISTRO_FILE) || return
+  OSTREE_OSNAME=$(yq ".distro.ostree.os-name" $DISTRO_FILE) || return
+  DISTRO_VERSION_MAJOR=$(yq ".distro.version.major" $DISTRO_FILE) || return
+  DISTRO_VERSION_MINOR=$(yq ".distro.version.minor" $DISTRO_FILE) || return
+  DISTRO_VERSION_PATCH=$(yq ".distro.version.patch" $DISTRO_FILE) || return
+
+  set_conf "ROOTFS_BASE=$ROOTFS_BASE"
+  set_conf "VIRT_BACKEND=$VIRT_BACKEND"
+  set_conf "OSTREE_REPO=$OSTREE_REPO"
+  set_conf "OSTREE_MANIFEST=$OSTREE_MANIFEST"
+  set_conf "OSTREE_ROOTFS=$OSTREE_ROOTFS"
+  set_conf "OSTREE_SUMMARY=$OSTREE_SUMMARY"
+  set_conf "OSTREE_OTA_SYSROOT=$OSTREE_OTA_SYSROOT"
+  set_conf "OSTREE_OSNAME=$OSTREE_OSNAME"
+  set_conf "DISTRO_VERSION_MAJOR=$DISTRO_VERSION_MAJOR"
+  set_conf "DISTRO_VERSION_MINOR=$DISTRO_VERSION_MINOR"
+  set_conf "DISTRO_VERSION_PATCH=$DISTRO_VERSION_PATCH"
 }
 
 init || return -1
+parse_machine || return -1
+parse_distro || return -1
 
 ###
 ### Main command handler
 ###
 nulix() {
-  case "$1" in
+  local cmd="$1"
+  shift # remove the top-level command
+
+  case "$cmd" in
     build)
-      case "$2" in
-        bsp)
-          build_bsp
-          ;;
-        rootfs)
-          build_rootfs
-          ;;
-        rootfs-docker-image)
-          build_rootfs_docker_image
-          ;;
-        ostree-repo)
-          build_bsp &&
-          build_rootfs &&
-          build_ostree_repo
-          ;;
-        os)
-          build_bsp &&
-          build_rootfs &&
-          build_ostree_repo &&
-          mk_image
-          ;;
-        help)
-          usage_build
-          ;;
-        *)
-          LOG_ERR "Unknown build target: $2\n"
-          usage_build
-          ;;
-      esac
+      for subcmd in "$@"; do
+        case "$subcmd" in
+          bsp) build_bsp ;;
+          rootfs) build_rootfs ;;
+          rootfs-docker-image) build_rootfs_docker_image ;;
+          ostree-repo) 
+            build_bsp && build_rootfs && build_ostree_repo ;;
+          os) 
+            build_bsp && build_rootfs && build_ostree_repo && mk_image ;;
+          help) usage_build; return 0 ;;
+          *) 
+            LOG_ERR "Unknown build target: $subcmd"
+            usage_build
+            return 1
+            ;;
+        esac
+      done
       ;;
     clean-all)
       clean_all
@@ -210,8 +370,9 @@ nulix() {
       usage
       ;;
     *)
-      LOG_ERR "Unknown command: $1\n"
+      LOG_ERR "Unknown command: $cmd"
       usage
+      return 1
       ;;
   esac
 }

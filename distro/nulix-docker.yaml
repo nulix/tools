@@ -1,0 +1,15 @@
+distro:
+  rootfs: "alpine"
+  virt:
+    backend: "docker"
+  ostree:
+    repo: "ostree_repo"
+    manifest: "ostree_manifest"
+    rootfs: "nulix-rootfs"
+    summary: 1
+    ota-sysroot: "ota-sysroot"
+    os-name: "nulix"
+  version:
+    major: 1
+    minor: 1
+    patch: 0
