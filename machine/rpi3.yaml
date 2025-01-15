@@ -1,0 +1,17 @@
+machine:
+  name: "rpi3"
+  arch: "arm64"
+  owner: "nulix"
+  hostname: "raspberrypi3"
+  uboot:
+    repo: "https://source.denx.de/u-boot/u-boot.git"
+    branch: "v2024.10"
+    defconfig: "rpi_3_b_plus_defconfig"
+  kernel:
+    repo: "https://github.com/raspberrypi/linux.git"
+    branch: "rpi-6.6.y"
+    defconfig: "bcm2711_defconfig"
+    image: "Image"
+  serial:
+    port: "ttyS0"
+    baud: "115200"
