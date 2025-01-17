@@ -220,6 +220,11 @@ init() {
     return -1
   fi
 
+  if ! which yq &> /dev/null; then
+    LOG_DBG "yq is not installed, will use internal wrapper..."
+    alias yq='_yq'
+  fi
+
   if [ ! -d "$THIS_DIR/bsp" ]; then
     LOG_ERR "bsp source directory not found!"
     return -1
@@ -271,7 +276,7 @@ init() {
 ###
 ### yq wrapper function
 ###
-yq() {
+_yq() {
   docker run --rm -v "${THIS_DIR}":/workdir mikefarah/yq -e "$@"
 }
 
