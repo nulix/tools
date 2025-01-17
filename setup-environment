@@ -246,7 +246,7 @@ init() {
     MACHINE="$DEFAULT_MACHINE"
   fi
 
-  if [ ! -f "$THIS_DIR/tools/machine/$MACHINE.yaml" ]; then
+  if [ ! -f "$THIS_DIR/tools/machine/$MACHINE.yml" ]; then
     LOG_WRN "machine file not found for $MACHINE, defaulting to $DEFAULT_MACHINE"
     MACHINE="$DEFAULT_MACHINE"
   fi
@@ -257,7 +257,7 @@ init() {
     DISTRO="$DEFAULT_DISTRO"
   fi
 
-  if [ ! -f "$THIS_DIR/tools/distro/$DISTRO.yaml" ]; then
+  if [ ! -f "$THIS_DIR/tools/distro/$DISTRO.yml" ]; then
     LOG_WRN "distro file not found for $DISTRO, defaulting to $DEFAULT_DISTRO"
     DISTRO="$DEFAULT_DISTRO"
   fi
@@ -292,7 +292,7 @@ set_conf() {
 ### Set machine settings
 ###
 parse_machine() {
-  MACHINE_FILE="tools/machine/$MACHINE.yaml"
+  MACHINE_FILE="tools/machine/$MACHINE.yml"
 
   # read values from $MACHINE_FILE
   MACHINE=$(yq ".machine.name" $MACHINE_FILE) || return
@@ -328,7 +328,7 @@ parse_machine() {
 ### Set distro settings
 ###
 parse_distro() {
-  DISTRO_FILE="tools/distro/$DISTRO.yaml"
+  DISTRO_FILE="tools/distro/$DISTRO.yml"
 
   # read values from $DISTRO_FILE
   ROOTFS_BASE=$(yq ".distro.rootfs" $DISTRO_FILE) || return
