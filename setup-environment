@@ -33,7 +33,8 @@ build_bsp() {
   cd ${THIS_DIR}/bsp
 
   docker build -f Dockerfile.$MACHINE . -o . \
-    $PLATFORM \
+    --builder $DOCKER_MULTI_PLATFORM_BUILDER \
+    --platform=linux/$MACHINE_ARCH \
     --build-arg MACHINE="$MACHINE" \
     --build-arg ARCH="$MACHINE_ARCH" \
     --build-arg UBOOT_REPO="$UBOOT_REPO" \
@@ -70,7 +71,8 @@ build_rootfs() {
   rm -f nulix-rootfs-*.tar.gz
 
   docker build -o - . \
-    $PLATFORM \
+    --builder $DOCKER_MULTI_PLATFORM_BUILDER \
+    --platform=linux/$MACHINE_ARCH \
     --build-arg MACHINE="$MACHINE" \
     --build-arg HOSTNAME="$HOSTNAME" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
@@ -128,7 +130,8 @@ build_ostree_repo() {
   cd ${THIS_DIR}/rootfs
 
   docker build -f Dockerfile.ostree_repo . -o . \
-    $PLATFORM \
+    --builder $DOCKER_MULTI_PLATFORM_BUILDER \
+    --platform=linux/$MACHINE_ARCH \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
@@ -169,7 +172,8 @@ mk_image() {
   cp ${THIS_DIR}/tools/Dockerfile.disk-image .
 
   docker build -f Dockerfile.disk-image . -o . \
-    $PLATFORM \
+    --builder $DOCKER_MULTI_PLATFORM_BUILDER \
+    --platform=linux/$MACHINE_ARCH \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
@@ -275,6 +279,13 @@ init() {
   mkdir -p "$THIS_DIR/build/deploy"
   mkdir -p "$THIS_DIR/build/deploy/$MACHINE"
   rm -f "$THIS_DIR/build/conf/local.conf"
+
+  # init docker multi-platform builder
+  DOCKER_MULTI_PLATFORM_BUILDER="multi-platform-builder"
+  docker buildx create \
+    --name $DOCKER_MULTI_PLATFORM_BUILDER \
+    --driver docker-container \
+    --use
 }
 
 ###
@@ -326,11 +337,6 @@ parse_machine() {
   set_conf "KERNEL_IMAGE=$KERNEL_IMAGE"
   set_conf "SERIAL_PORT=$SERIAL_PORT"
   set_conf "SERIAL_BAUD=$SERIAL_BAUD"
-
-  # set platform for cross compile
-  if [ -n "$MACHINE_ARCH" ]; then
-    PLATFORM="--platform=linux/$MACHINE_ARCH"
-  fi
 }
 
 ###
