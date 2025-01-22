@@ -31,7 +31,6 @@ ARG BOOT_FILES_DEPLOY_ARCHIVE="boot-artifacts-*.tar.gz"
 ARG BOOT_FILES_ARCHIVE="boot-artifacts.tar.gz"
 ARG KERNEL_ARTIFACTS_DEPLOY_ARCHIVE="kernel-artifacts-*.tar.gz"
 ARG KERNEL_ARTIFACTS_ARCHIVE="kernel-artifacts.tar.gz"
-ARG ROOTFS_ARCHIVE="nulix-rootfs-*.tar.gz"
 ARG IMAGE_FILE="nulix-os"
 
 # copy dependencies
@@ -39,7 +38,6 @@ COPY ${OSTREE_REPO} /${OSTREE_REPO}/
 COPY ${OSTREE_MANIFEST} /
 COPY ${BOOT_FILES_DEPLOY_ARCHIVE} /${BOOT_FILES_ARCHIVE}
 COPY ${KERNEL_ARTIFACTS_DEPLOY_ARCHIVE} /${KERNEL_ARTIFACTS_ARCHIVE}
-COPY ${ROOTFS_ARCHIVE} /
 
 # Init ostree sysroot files
 RUN mkdir -p ${OTA_SYSROOT}
