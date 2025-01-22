@@ -33,8 +33,6 @@ build_bsp() {
   cd ${THIS_DIR}/bsp
 
   docker build -f Dockerfile.$MACHINE . -o . \
-    --builder $DOCKER_MULTI_PLATFORM_BUILDER \
-    --platform=linux/$MACHINE_ARCH \
     --build-arg MACHINE="$MACHINE" \
     --build-arg ARCH="$MACHINE_ARCH" \
     --build-arg UBOOT_REPO="$UBOOT_REPO" \
@@ -71,8 +69,6 @@ build_rootfs() {
   rm -f nulix-rootfs-*.tar.gz
 
   docker build -o - . \
-    --builder $DOCKER_MULTI_PLATFORM_BUILDER \
-    --platform=linux/$MACHINE_ARCH \
     --build-arg MACHINE="$MACHINE" \
     --build-arg HOSTNAME="$HOSTNAME" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
@@ -130,8 +126,6 @@ build_ostree_repo() {
   cd ${THIS_DIR}/rootfs
 
   docker build -f Dockerfile.ostree_repo . -o . \
-    --builder $DOCKER_MULTI_PLATFORM_BUILDER \
-    --platform=linux/$MACHINE_ARCH \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
@@ -172,8 +166,6 @@ mk_image() {
   cp ${THIS_DIR}/tools/Dockerfile.disk-image .
 
   docker build -f Dockerfile.disk-image . -o . \
-    --builder $DOCKER_MULTI_PLATFORM_BUILDER \
-    --platform=linux/$MACHINE_ARCH \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
@@ -199,7 +191,6 @@ clean_all() {
     ${THIS_DIR}/rootfs/$OSTREE_REPO \
     ${THIS_DIR}/rootfs/$OSTREE_MANIFES
 
-  # TODO: use dedicated docker build context!
   docker builder prune -af || return
 
   LOG_INF "Project for $MACHINE cleaned!"
@@ -279,13 +270,6 @@ init() {
   mkdir -p "$THIS_DIR/build/deploy"
   mkdir -p "$THIS_DIR/build/deploy/$MACHINE"
   rm -f "$THIS_DIR/build/conf/local.conf"
-
-  # init docker multi-platform builder
-  DOCKER_MULTI_PLATFORM_BUILDER="multi-platform-builder"
-  docker buildx create \
-    --name $DOCKER_MULTI_PLATFORM_BUILDER \
-    --driver docker-container \
-    --use
 }
 
 ###
@@ -395,7 +379,7 @@ nulix() {
             build_bsp && build_rootfs && build_ostree_repo && mk_image ;;
           help) usage_build; return 0 ;;
           *) 
-            LOG_ERR "Unknown build target: $subcmd"
+            LOG_ERR "Unknown build command: $subcmd"
             usage_build
             return 1
             ;;
