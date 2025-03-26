@@ -1,6 +1,6 @@
 # vim: set ft=sh:
 set -o pipefail
-[ $(cat /proc/$$/comm) = "zsh" ] && setopt nullglob
+[ -n "$ZSH_VERSION" ] && setopt nullglob shwordsplit
 
 RED="\\e[31m"
 YELLOW="\\e[33m"
@@ -250,6 +250,7 @@ usage_build() {
   echo "  rootfs              Build rootfs for current <MACHINE>"
   echo "  rootfs-docker-image Build tagged roofs docker image for current <MACHINE>"
   echo "  ostree-repo         Build (new) OSTree repo with a dedicated commit"
+  echo "  image               Build bootable disk image"
   echo "  os                  Build BSP, rootfs, OSTree repo and bootable disk image"
   echo "  help                Print this usage"
   echo
@@ -460,13 +461,13 @@ nulix() {
       return 1
     fi
 
-    for subcmd in "$subcmds"; do
+    for subcmd in $subcmds; do
       case "$subcmd" in
       bsp) build_bsp "$no_cache" "$verbose" ;;
       rootfs) build_rootfs "$no_cache" "$verbose" ;;
       rootfs-docker-image) build_rootfs_docker_image "$no_cache" "$verbose" ;;
-      ostree-repo)
-        build_bsp "$no_cache" "$verbose" && build_rootfs "$no_cache" "$verbose" && build_ostree_repo "$no_cache" "$verbose" ;;
+      ostree-repo) build_ostree_repo "$no_cache" "$verbose" ;;
+      image) mk_image "$no_cache" "$verbose" ;;
       os)
         build_bsp "$no_cache" "$verbose" && build_rootfs "$no_cache" "$verbose" && build_ostree_repo "$no_cache" "$verbose" && mk_image "$no_cache" "$verbose" ;;
       help)
