@@ -1,5 +1,6 @@
 # vim: set ft=sh:
 set -o pipefail
+[ $(cat /proc/$$/comm) = "zsh" ] && setopt nullglob
 
 RED="\\e[31m"
 YELLOW="\\e[33m"
@@ -28,11 +29,14 @@ LOG_DBG() {
 ### Function to build BSP
 ###
 build_bsp() {
+  local NO_CACHE="$1"
+  local VERBOSE="$2"
+
   LOG_INF "Starting $MACHINE BSP build..."
 
   cd ${THIS_DIR}/bsp
 
-  docker build -f Dockerfile.$MACHINE . -o . \
+  docker build $NO_CACHE $VERBOSE -f Dockerfile.$MACHINE . -o . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg ARCH="$MACHINE_ARCH" \
     --build-arg UBOOT_REPO="$UBOOT_REPO" \
@@ -41,8 +45,8 @@ build_bsp() {
     --build-arg KERNEL_REPO="$KERNEL_REPO" \
     --build-arg KERNEL_BRANCH="$KERNEL_BRANCH" \
     --build-arg KERNEL_DEFCONFIG="$KERNEL_DEFCONFIG" \
-    --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
-    || return
+    --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" ||
+    return
 
   rm -f ../build/deploy/$MACHINE/boot-artifacts-*.tar.gz \
     ../build/deploy/$MACHINE/kernel-artifacts-*.tar.gz \
@@ -63,12 +67,15 @@ build_bsp() {
 ### Function to build rootfs tar.gz
 ###
 build_rootfs() {
+  local NO_CACHE="$1"
+  local VERBOSE="$2"
+
   LOG_INF "Starting $MACHINE rootfs build..."
 
   cd ${THIS_DIR}/rootfs
   rm -f nulix-rootfs-*.tar.gz
 
-  docker build -o - . \
+  docker build $NO_CACHE $VERBOSE -o - . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg HOSTNAME="$HOSTNAME" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
@@ -77,9 +84,9 @@ build_rootfs() {
     --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
-    --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
-    | gzip > nulix-rootfs-$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH.tar.gz \
-    || return
+    --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" |
+    gzip > nulix-rootfs-$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH.tar.gz ||
+    return
 
   rm -f ../build/deploy/$MACHINE/nulix-rootfs-*.tar.gz
   # TODO: rootfs image is needed in this dir for the ostree_repo build,
@@ -95,11 +102,14 @@ build_rootfs() {
 ###  $ docker run --rm -it nulix-rootfs:1.0.0
 ###
 build_rootfs_docker_image() {
+  local NO_CACHE="$1"
+  local VERBOSE="$2"
+
   LOG_INF "Starting $MACHINE rootfs docker image build..."
 
   cd ${THIS_DIR}/rootfs
 
-  docker build . \
+  docker build $NO_CACHE $VERBOSE . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg HOSTNAME="$HOSTNAME" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
@@ -109,8 +119,8 @@ build_rootfs_docker_image() {
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
-    -t nulix-rootfs:$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH \
-    || return
+    -t nulix-rootfs:$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH ||
+    return
 
   cd ${THIS_DIR}
 
@@ -121,11 +131,22 @@ build_rootfs_docker_image() {
 ### Function to build OSTree repo
 ###
 build_ostree_repo() {
+  local NO_CACHE="$1"
+  local VERBOSE="$2"
+
   LOG_INF "Starting $MACHINE OSTree repo build..."
 
   cd ${THIS_DIR}/rootfs
 
-  docker build -f Dockerfile.ostree_repo . -o . \
+  # Prepare custom commit message
+  if [ -n "$OSTREE_COMMIT_MSG" ]; then
+    LOG_DBG "OSTree commit message: \"$OSTREE_COMMIT_MSG\""
+    OSTREE_COMMIT_MSG_BUILD_ARG="OSTREE_COMMIT_BODY=$OSTREE_COMMIT_MSG"
+  else
+    OSTREE_COMMIT_MSG_BUILD_ARG="NONE"
+  fi
+
+  docker build $NO_CACHE $VERBOSE -f Dockerfile.ostree_repo . -o . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
@@ -134,7 +155,8 @@ build_ostree_repo() {
     --build-arg OSTREE_MANIFEST="$OSTREE_MANIFEST" \
     --build-arg OSTREE_ROOTFS="$OSTREE_ROOTFS" \
     --build-arg OSTREE_UPDATE_SUMMARY="$OSTREE_SUMMARY" \
-    || return
+    --build-arg $OSTREE_COMMIT_MSG_BUILD_ARG ||
+    return
 
   # TODO: the $OSTREE_REPO dir is needed for next build to keep
   # the commit history, try to use it from the build dir instead
@@ -152,6 +174,9 @@ build_ostree_repo() {
 ### Function to create bootable disk image
 ###
 mk_image() {
+  local NO_CACHE="$1"
+  local VERBOSE="$2"
+
   if [ ! -d "${THIS_DIR}/build/deploy/$MACHINE" ]; then
     LOG_ERR "deploy directory not found, can't proceed!"
     return -1
@@ -159,13 +184,12 @@ mk_image() {
 
   LOG_INF "Starting $MACHINE disk image build..."
 
-
   cd ${THIS_DIR}/build/deploy/$MACHINE
   rm -f Dockerfile.disk-image \
     nulix-os*.img.bz2
   cp ${THIS_DIR}/tools/Dockerfile.disk-image .
 
-  docker build -f Dockerfile.disk-image . -o . \
+  docker build $NO_CACHE $VERBOSE -f Dockerfile.disk-image . -o . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
@@ -173,8 +197,8 @@ mk_image() {
     --build-arg OSTREE_REPO="$OSTREE_REPO" \
     --build-arg OSTREE_MANIFEST="$OSTREE_MANIFEST" \
     --build-arg OTA_SYSROOT="$OSTREE_OTA_SYSROOT" \
-    --build-arg OSTREE_OSNAME="$OSTREE_OSNAME" \
-    || return
+    --build-arg OSTREE_OSNAME="$OSTREE_OSNAME" ||
+    return
 
   rm Dockerfile.disk-image
   cd ${THIS_DIR}
@@ -200,14 +224,39 @@ clean_all() {
 ### Print general usage
 ###
 usage() {
-  echo "Usage: nulix {build|clean-all}"
+  echo
+  echo "Usage: nulix <COMMAND> [OPTIONS]"
+  echo
+  echo "Tool used for building and deploying different components of NULIX OS"
+  echo
+  echo "Commands:"
+  echo "  build <SUBCOMMAND> [options] Build different components of NULIX OS"
+  echo "  clean-all                    Initialize fresh environment"
+  echo "  help                         Print this usage"
+  echo
 }
 
 ###
 ### Print usage for build sub-command
 ###
 usage_build() {
-  echo "Usage: nulix build {bsp|rootfs|rootfs-docker-image|ostree-repo|os}"
+  echo
+  echo "Usage: nulix build <SUBCOMMAND> [OPTIONS]"
+  echo
+  echo "Build different components of NULIX OS"
+  echo
+  echo "Subcommands:"
+  echo "  bsp                 Build U-Boot and Linux kernel for current <MACHINE>"
+  echo "  rootfs              Build rootfs for current <MACHINE>"
+  echo "  rootfs-docker-image Build tagged roofs docker image for current <MACHINE>"
+  echo "  ostree-repo         Build (new) OSTree repo with a dedicated commit"
+  echo "  os                  Build BSP, rootfs, OSTree repo and bootable disk image"
+  echo "  help                Print this usage"
+  echo
+  echo "Options:"
+  echo "  --no-cache          Don't use docker cache"
+  echo "  --verbose           Print docker build progress"
+  echo
 }
 
 ###
@@ -367,37 +416,82 @@ nulix() {
   shift # remove the top-level command
 
   case "$cmd" in
-    build)
-      for subcmd in "$@"; do
-        case "$subcmd" in
-          bsp) build_bsp ;;
-          rootfs) build_rootfs ;;
-          rootfs-docker-image) build_rootfs_docker_image ;;
-          ostree-repo) 
-            build_bsp && build_rootfs && build_ostree_repo ;;
-          os) 
-            build_bsp && build_rootfs && build_ostree_repo && mk_image ;;
-          help) usage_build; return 0 ;;
-          *) 
-            LOG_ERR "Unknown build command: $subcmd"
-            usage_build
-            return 1
-            ;;
-        esac
-      done
-      ;;
-    clean-all)
-      clean_all
-      ;;
-    help)
-      usage
-      return 0
-      ;;
-    *)
-      LOG_ERR "Unknown command: $cmd"
-      usage
+  build)
+    local no_cache=""
+    local verbose=""
+    local subcmds=""
+    local invalid_flag=0
+    local invalid_flags=""
+
+    # Check for supported build flags
+    for arg in "$@"; do
+      if [ "$arg" = "--no-cache" ]; then
+        no_cache="--no-cache"
+        set -- $(echo "$@" | sed "s/$arg//g")
+      elif [ "$arg" = "--verbose" ]; then
+        verbose="--progress=plain"
+        set -- $(echo "$@" | sed "s/$arg//g")
+      fi
+    done
+
+    # Check for invalid flags
+    for arg in "$@"; do
+      if [ "${arg:0:2}" = "--" ]; then
+        invalid_flag=1
+        if [ -z "$invalid_flags" ]; then
+          invalid_flags="$arg"
+        else
+          invalid_flags="$invalid_flags $arg"
+        fi
+      fi
+    done
+
+    if [ "$invalid_flag" -eq 1 ]; then
+      LOG_ERR "Unknown flag(s): $invalid_flags"
+      usage_build
       return 1
-      ;;
+    fi
+
+    subcmds="$*"
+
+    if [ -z "$subcmds" ]; then
+      LOG_ERR "Missing build subcommand!"
+      usage_build
+      return 1
+    fi
+
+    for subcmd in "$subcmds"; do
+      case "$subcmd" in
+      bsp) build_bsp "$no_cache" "$verbose" ;;
+      rootfs) build_rootfs "$no_cache" "$verbose" ;;
+      rootfs-docker-image) build_rootfs_docker_image "$no_cache" "$verbose" ;;
+      ostree-repo)
+        build_bsp "$no_cache" "$verbose" && build_rootfs "$no_cache" "$verbose" && build_ostree_repo "$no_cache" "$verbose" ;;
+      os)
+        build_bsp "$no_cache" "$verbose" && build_rootfs "$no_cache" "$verbose" && build_ostree_repo "$no_cache" "$verbose" && mk_image "$no_cache" "$verbose" ;;
+      help)
+        usage_build
+        return 0
+        ;;
+      *)
+        LOG_ERR "Unknown build command: $subcmd"
+        usage_build
+        return 1
+        ;;
+      esac
+    done
+    ;;
+  clean-all)
+    clean_all
+    ;;
+  help)
+    usage
+    return 0
+    ;;
+  *)
+    LOG_ERR "Unknown command: $cmd"
+    usage
+    return 1
+    ;;
   esac
 }
-
