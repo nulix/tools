@@ -155,7 +155,7 @@ build_ostree_repo() {
     --build-arg OSTREE_MANIFEST="$OSTREE_MANIFEST" \
     --build-arg OSTREE_ROOTFS="$OSTREE_ROOTFS" \
     --build-arg OSTREE_UPDATE_SUMMARY="$OSTREE_SUMMARY" \
-    --build-arg $OSTREE_COMMIT_MSG_BUILD_ARG ||
+    --build-arg "$OSTREE_COMMIT_MSG_BUILD_ARG" ||
     return
 
   # TODO: the $OSTREE_REPO dir is needed for next build to keep
