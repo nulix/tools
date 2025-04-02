@@ -1,6 +1,6 @@
 # vim: set ft=sh:
 set -o pipefail
-[ -n "$ZSH_VERSION" ] && setopt nullglob shwordsplit || true
+[ -n "$ZSH_VERSION" ] && setopt nullglob shwordsplit
 
 RED="\\e[31m"
 YELLOW="\\e[33m"
