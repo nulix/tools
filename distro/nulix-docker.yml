@@ -9,6 +9,9 @@ distro:
     summary: 1
     ota-sysroot: "ota-sysroot"
     os-name: "nulix"
+  upd8:
+    keys: "key.txt"
+    machine-reg-token: "token.age"
   version:
     major: 1
     minor: 3
