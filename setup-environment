@@ -135,23 +135,20 @@ build_ostree_repo() {
 
   cd "${THIS_DIR}/rootfs" || return
 
-  # Generate upd8 private key if missing
+  # Generate upd8 user files
   if [ ! -f "${UPD8_KEYS}" ]; then
-    if ! which rage-keygen &> /dev/null; then
-      LOG_WRN "rage is not installed, can't generate upd8 files!"
-    else
-      LOG_DBG "Generating new upd8 keys..."
-      rage-keygen -o "${UPD8_KEYS}"
-    fi
-  fi
+    # Generate upd8 private key if missing
+    LOG_DBG "Generating new upd8 keys..."
+    rage-keygen -o "${UPD8_KEYS}"
 
-  # Set up machine registration token
-  if [ -z "${MACHINE_REG_TOKEN_SECRET}" ]; then
-    LOG_WRN "Machine registration token not set, automatic registration won't work!"
-  else
-    if [ ! -f "${UPD8_MACHINE_REG_TOKEN}" ]; then
-      PUBLIC_KEY=$(grep "# public key:" "${UPD8_KEYS}" | cut -d" " -f4)
-      echo "${MACHINE_REG_TOKEN_SECRET}" | rage -e -o "${UPD8_MACHINE_REG_TOKEN}" -r "${PUBLIC_KEY}"
+    # Generate machine registration token
+    if [ -z "${MACHINE_REG_TOKEN_SECRET}" ]; then
+      LOG_WRN "Machine registration token not set, automatic registration won't work!"
+    else
+      if [ ! -f "${UPD8_MACHINE_REG_TOKEN}" ]; then
+        PUBLIC_KEY=$(grep "# public key:" "${UPD8_KEYS}" | cut -d" " -f4)
+        echo "${MACHINE_REG_TOKEN_SECRET}" | rage -e -o "${UPD8_MACHINE_REG_TOKEN}" -r "${PUBLIC_KEY}"
+      fi
     fi
   fi
 
@@ -290,6 +287,10 @@ init() {
   if ! which yq &> /dev/null; then
     LOG_DBG "yq is not installed, will use internal wrapper..."
     alias yq='_yq'
+  fi
+
+  if ! which rage-keygen &> /dev/null; then
+    LOG_WRN "rage is not installed, won't be able to generate upd8 files!"
   fi
 
   if [ ! -d "$THIS_DIR/bsp" ]; then
