@@ -133,6 +133,12 @@ build_ostree_repo() {
 
   LOG_INF "Starting $MACHINE OSTree repo build..."
 
+  # Reuse existing upd8 files if they exist
+  [ -f "${THIS_DIR}/build/cache/$UPD8_KEYS" ] && \
+    cp "${THIS_DIR}/build/cache/$UPD8_KEYS" "${THIS_DIR}/rootfs"
+  [ -f "${THIS_DIR}/build/cache/$UPD8_MACHINE_REG_TOKEN" ] && \
+    cp "${THIS_DIR}/build/cache/$UPD8_MACHINE_REG_TOKEN" "${THIS_DIR}/rootfs"
+
   cd "${THIS_DIR}/rootfs" || return
 
   # Generate upd8 user files
@@ -140,6 +146,7 @@ build_ostree_repo() {
     # Generate upd8 private key if missing
     LOG_DBG "Generating new upd8 keys..."
     rage-keygen -o "${UPD8_KEYS}"
+    cp "${UPD8_KEYS}" "${THIS_DIR}/build/cache/"
 
     # Generate machine registration token
     if [ -z "${MACHINE_REG_TOKEN_SECRET}" ]; then
@@ -148,6 +155,7 @@ build_ostree_repo() {
       if [ ! -f "${UPD8_MACHINE_REG_TOKEN}" ]; then
         PUBLIC_KEY=$(grep "# public key:" "${UPD8_KEYS}" | cut -d" " -f4)
         echo "${MACHINE_REG_TOKEN_SECRET}" | rage -e -o "${UPD8_MACHINE_REG_TOKEN}" -r "${PUBLIC_KEY}"
+        cp "${UPD8_MACHINE_REG_TOKEN}" "${THIS_DIR}/build/cache/"
       fi
     fi
   fi
@@ -177,7 +185,9 @@ build_ostree_repo() {
   # The $OSTREE_REPO dir is needed for next build to keep the commit history
   rm -rf "../build/deploy/$MACHINE/$OSTREE_REPO" \
     "../build/deploy/$MACHINE/$OSTREE_MANIFEST" \
-    "../build/deploy/$MACHINE/$OSTREE_REPO.tar.gz"
+    "../build/deploy/$MACHINE/$OSTREE_REPO.tar.gz" \
+    "$UPD8_KEYS" \
+    "$UPD8_MACHINE_REG_TOKEN"
   cp -r "$OSTREE_REPO" "../build/deploy/$MACHINE"
   mv "$OSTREE_REPO.tar.gz" "$OSTREE_MANIFEST" "../build/deploy/$MACHINE"
   cd "${THIS_DIR}" || return
@@ -336,6 +346,7 @@ init() {
   # Init the build directory
   mkdir -p "$THIS_DIR/build"
   mkdir -p "$THIS_DIR/build/conf"
+  mkdir -p "$THIS_DIR/build/cache"
   mkdir -p "$THIS_DIR/build/deploy"
   mkdir -p "$THIS_DIR/build/deploy/$MACHINE"
   rm -f "$THIS_DIR/build/conf/local.conf"
