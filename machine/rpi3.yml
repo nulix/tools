@@ -9,7 +9,7 @@ machine:
     defconfig: "rpi_3_b_plus_defconfig"
   kernel:
     repo: "https://github.com/raspberrypi/linux.git"
-    branch: "rpi-6.6.y"
+    branch: "rpi-6.12.y"
     defconfig: "bcm2711_defconfig"
     image: "Image"
   serial:
