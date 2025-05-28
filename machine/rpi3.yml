@@ -5,7 +5,7 @@ machine:
   hostname: "raspberrypi3"
   uboot:
     repo: "https://source.denx.de/u-boot/u-boot.git"
-    branch: "v2025.01"
+    branch: "v2025.04"
     defconfig: "rpi_3_b_plus_defconfig"
   kernel:
     repo: "https://github.com/raspberrypi/linux.git"
