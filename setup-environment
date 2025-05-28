@@ -55,6 +55,8 @@ build_bsp() {
   mv kernel-modules-*.tar.gz ../build/deploy/$MACHINE
   cd "${THIS_DIR}" || return
 
+  rm -f rootfs/machine/$MACHINE/kernel-artifacts-*.tar.gz \
+    rootfs/machine/$MACHINE/kernel-modules-*.tar.gz
   cp build/deploy/$MACHINE/kernel-artifacts-*.tar.gz rootfs/machine/$MACHINE
   cp build/deploy/$MACHINE/kernel-modules-*.tar.gz rootfs/machine/$MACHINE
 
@@ -83,10 +85,10 @@ build_rootfs() {
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" |
-    gzip > nulix-rootfs-$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH.tar.gz ||
+    gzip > nulix-rootfs-"$DISTRO_VERSION_MAJOR"."$DISTRO_VERSION_MINOR"."$DISTRO_VERSION_PATCH".tar.gz ||
     return
 
-  rm -f "../build/deploy/$MACHINE/nulix-rootfs-*.tar.gz"
+  rm -f ../build/deploy/"$MACHINE"/nulix-rootfs-*.tar.gz
   # The rootfs image is needed in this dir for the ostree_repo build
   cp nulix-rootfs-*.tar.gz "../build/deploy/$MACHINE"
   cd "${THIS_DIR}" || return
