@@ -11,7 +11,7 @@
 ###
 ### STAGE 1 - build
 ###
-FROM ubuntu AS build
+FROM ubuntu:24.04 AS build
 
 # install build tools
 RUN apt update && \
@@ -27,6 +27,7 @@ ARG OSTREE_MANIFEST
 ARG OSTREE_BRANCHNAME="$DISTRO_VERSION_MAJOR/stable/$MACHINE"
 ARG OTA_SYSROOT
 ARG OSTREE_OSNAME
+ARG UBOOT_IMAGES
 ARG BOOT_FILES_DEPLOY_ARCHIVE="boot-artifacts-*.tar.gz"
 ARG BOOT_FILES_ARCHIVE="boot-artifacts.tar.gz"
 ARG KERNEL_ARTIFACTS_DEPLOY_ARCHIVE="kernel-artifacts-*.tar.gz"
@@ -97,7 +98,7 @@ RUN install -d ${OTA_SYSROOT}/ostree/deploy/${OSTREE_OSNAME}/var/local
 RUN ostree_target_hash=$(cat ${OSTREE_MANIFEST}) && \
     target_version=${ostree_target_hash} && \
     mkdir -p ${OTA_SYSROOT}/ostree/deploy/${OSTREE_OSNAME}/var/sota/import && \
-	  echo "{\"${ostree_target_hash}\":\"${GARAGE_TARGET_NAME}-${target_version}\"}" \
+    echo "{\"${ostree_target_hash}\":\"${GARAGE_TARGET_NAME}-${target_version}\"}" \
       > ${OTA_SYSROOT}/ostree/deploy/${OSTREE_OSNAME}/var/sota/import/installed_versions
 
 # blank image
@@ -105,7 +106,7 @@ RUN dd if=/dev/zero of=${IMAGE_FILE} bs=1M count=1024
 
 # prepare partitions
 RUN parted -s ${IMAGE_FILE} mklabel msdos \
-      mkpart primary fat32 0% 100MiB \
+      mkpart primary fat32 1MiB 100MiB \
       mkpart primary ext4 100MiB 100% \
       print
 
@@ -121,19 +122,33 @@ RUN guestfish -a ${IMAGE_FILE} <<EOF
       run
       mkfs vfat /dev/sda1 label:boot
       mkfs ext4 /dev/sda2 label:otaroot inode:4096
+
       mount /dev/sda1 /
       tar-in ${BOOT_FILES_ARCHIVE} /
       tar-in ${KERNEL_ARTIFACTS_ARCHIVE} /
       echo "=== boot partition ==="
       ls /
+
       umount /
       mount /dev/sda2 /
       tar-in ${OTA_SYSROOT}.tar /
       echo "=== otaroot partition ==="
       ls /
       umount /
+
       exit
 EOF
+
+# write raw boot files to image
+RUN if [ -n "${UBOOT_IMAGES}" ]; then \
+      tar -xvf ${BOOT_FILES_ARCHIVE}; \
+      for i in ${UBOOT_IMAGES}; do \
+        img=$(echo "$i" | cut -d'@' -f1); \
+        offset=$(echo "$i" | cut -d'@' -f2); \
+        seek_kblocks=$(( (offset) / 2 )); \
+        dd if=${img} of=${IMAGE_FILE} bs=1K seek=${seek_kblocks} conv=notrunc && sync; \
+      done; \
+    fi
 
 # compress the image
 RUN OS_VER=$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH && \
@@ -149,4 +164,3 @@ FROM scratch
 ARG COMPRESSED_IMAGE_FILE="nulix-os-*.img.bz2"
 
 COPY --from=build ${COMPRESSED_IMAGE_FILE} /
-
