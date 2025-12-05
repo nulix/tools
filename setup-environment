@@ -40,9 +40,11 @@ build_bsp() {
     --build-arg ARCH="$MACHINE_ARCH" \
     --build-arg UBOOT_REPO="$UBOOT_REPO" \
     --build-arg UBOOT_BRANCH="$UBOOT_BRANCH" \
+    --build-arg UBOOT_REV="$UBOOT_REV" \
     --build-arg UBOOT_DEFCONFIG="$UBOOT_DEFCONFIG" \
     --build-arg KERNEL_REPO="$KERNEL_REPO" \
     --build-arg KERNEL_BRANCH="$KERNEL_BRANCH" \
+    --build-arg KERNEL_REV="$KERNEL_REV" \
     --build-arg KERNEL_DEFCONFIG="$KERNEL_DEFCONFIG" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" ||
     return
@@ -75,13 +77,20 @@ build_rootfs() {
   cd "${THIS_DIR}/rootfs" || return
   rm -f nulix-rootfs-*.tar.gz
 
-  docker build $NO_CACHE $VERBOSE -o - . \
+  # Reuse existing upd8 files or generate new ones
+  set_upd8_files
+
+  docker build --platform linux/$MACHINE_ARCH $NO_CACHE $VERBOSE -o - . \
     --build-arg MACHINE="$MACHINE" \
+    --build-arg ARCH="$MACHINE_ARCH" \
+    --build-arg ALPINE_VERSION="$ALPINE_VERSION" \
     --build-arg HOSTNAME="$HOSTNAME" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
     --build-arg VIRT_BACKEND="$VIRT_BACKEND" \
     --build-arg SERIAL_PORT="$SERIAL_PORT" \
     --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
+    --build-arg UPD8_KEYS_FILE="$UPD8_KEYS" \
+    --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" |
@@ -108,13 +117,20 @@ build_rootfs_docker_image() {
 
   cd "${THIS_DIR}/rootfs" || return
 
+  # Reuse existing upd8 files or generate new ones
+  set_upd8_files
+
   docker build $NO_CACHE $VERBOSE . \
     --build-arg MACHINE="$MACHINE" \
+    --build-arg ARCH="$MACHINE_ARCH" \
+    --build-arg ALPINE_VERSION="$ALPINE_VERSION" \
     --build-arg HOSTNAME="$HOSTNAME" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
     --build-arg VIRT_BACKEND="$VIRT_BACKEND" \
     --build-arg SERIAL_PORT="$SERIAL_PORT" \
     --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
+    --build-arg UPD8_KEYS_FILE="$UPD8_KEYS" \
+    --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
@@ -135,32 +151,7 @@ build_ostree_repo() {
 
   LOG_INF "Starting $MACHINE OSTree repo build..."
 
-  # Reuse existing upd8 files if they exist
-  [ -f "${THIS_DIR}/build/cache/$UPD8_KEYS" ] && \
-    cp "${THIS_DIR}/build/cache/$UPD8_KEYS" "${THIS_DIR}/rootfs"
-  [ -f "${THIS_DIR}/build/cache/$UPD8_MACHINE_REG_TOKEN" ] && \
-    cp "${THIS_DIR}/build/cache/$UPD8_MACHINE_REG_TOKEN" "${THIS_DIR}/rootfs"
-
   cd "${THIS_DIR}/rootfs" || return
-
-  # Generate upd8 user files
-  if [ ! -f "${UPD8_KEYS}" ]; then
-    # Generate upd8 private key if missing
-    LOG_DBG "Generating new upd8 keys..."
-    rage-keygen -o "${UPD8_KEYS}"
-    cp "${UPD8_KEYS}" "${THIS_DIR}/build/cache/"
-
-    # Generate machine registration token
-    if [ -z "${MACHINE_REG_TOKEN_SECRET}" ]; then
-      LOG_WRN "Machine registration token not set, automatic registration won't work!"
-    else
-      if [ ! -f "${UPD8_MACHINE_REG_TOKEN}" ]; then
-        PUBLIC_KEY=$(grep "# public key:" "${UPD8_KEYS}" | cut -d" " -f4)
-        echo "${MACHINE_REG_TOKEN_SECRET}" | rage -e -o "${UPD8_MACHINE_REG_TOKEN}" -r "${PUBLIC_KEY}"
-        cp "${UPD8_MACHINE_REG_TOKEN}" "${THIS_DIR}/build/cache/"
-      fi
-    fi
-  fi
 
   # Prepare custom commit message
   if [ -n "$OSTREE_COMMIT_MSG" ]; then
@@ -170,10 +161,8 @@ build_ostree_repo() {
     OSTREE_COMMIT_MSG_BUILD_ARG="NONE"
   fi
 
-  docker build $NO_CACHE $VERBOSE -f Dockerfile.ostree_repo . -o . \
+  docker build --platform linux/$MACHINE_ARCH $NO_CACHE $VERBOSE -f Dockerfile.ostree_repo . -o . \
     --build-arg MACHINE="$MACHINE" \
-    --build-arg UPD8_KEYS_FILE="$UPD8_KEYS" \
-    --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
@@ -224,7 +213,8 @@ mk_image() {
     --build-arg OSTREE_REPO="$OSTREE_REPO" \
     --build-arg OSTREE_MANIFEST="$OSTREE_MANIFEST" \
     --build-arg OTA_SYSROOT="$OSTREE_OTA_SYSROOT" \
-    --build-arg OSTREE_OSNAME="$OSTREE_OSNAME" ||
+    --build-arg OSTREE_OSNAME="$OSTREE_OSNAME" \
+    --build-arg UBOOT_IMAGES="$UBOOT_IMAGES" ||
     return
 
   rm Dockerfile.disk-image
@@ -332,7 +322,7 @@ init() {
   fi
 
   # Set the distro
-  DEFAULT_DISTRO="nulix-docker"
+  DEFAULT_DISTRO="alpine-docker"
   if [ -z "$DISTRO" ]; then
     DISTRO="$DEFAULT_DISTRO"
   fi
@@ -382,9 +372,12 @@ parse_machine() {
   HOSTNAME=$(yq ".machine.hostname" $MACHINE_FILE) || return
   UBOOT_REPO=$(yq ".machine.uboot.repo" $MACHINE_FILE) || return
   UBOOT_BRANCH=$(yq ".machine.uboot.branch" $MACHINE_FILE) || return
+  UBOOT_REV=$(yq ".machine.uboot.rev" $MACHINE_FILE) || return
   UBOOT_DEFCONFIG=$(yq ".machine.uboot.defconfig" $MACHINE_FILE) || return
+  UBOOT_IMAGES=$(yq '.machine.uboot.images | join(" ")' $MACHINE_FILE) || return
   KERNEL_REPO=$(yq ".machine.kernel.repo" $MACHINE_FILE) || return
   KERNEL_BRANCH=$(yq ".machine.kernel.branch" $MACHINE_FILE) || return
+  KERNEL_REV=$(yq ".machine.kernel.rev" $MACHINE_FILE) || return
   KERNEL_DEFCONFIG=$(yq ".machine.kernel.defconfig" $MACHINE_FILE) || return
   KERNEL_IMAGE=$(yq ".machine.kernel.image" $MACHINE_FILE) || return
   SERIAL_PORT=$(yq ".machine.serial.port" $MACHINE_FILE) || return
@@ -396,9 +389,12 @@ parse_machine() {
   set_conf "HOSTNAME=$HOSTNAME"
   set_conf "UBOOT_REPO=$UBOOT_REPO"
   set_conf "UBOOT_BRANCH=$UBOOT_BRANCH"
+  set_conf "UBOOT_REV=$UBOOT_REV"
   set_conf "UBOOT_DEFCONFIG=$UBOOT_DEFCONFIG"
+  set_conf "UBOOT_IMAGES=$UBOOT_IMAGES"
   set_conf "KERNEL_REPO=$KERNEL_REPO"
   set_conf "KERNEL_BRANCH=$KERNEL_BRANCH"
+  set_conf "KERNEL_REV=$KERNEL_REV"
   set_conf "KERNEL_DEFCONFIG=$KERNEL_DEFCONFIG"
   set_conf "KERNEL_IMAGE=$KERNEL_IMAGE"
   set_conf "SERIAL_PORT=$SERIAL_PORT"
@@ -412,7 +408,7 @@ parse_distro() {
   DISTRO_FILE="tools/distro/$DISTRO.yml"
 
   # Read values from the $DISTRO_FILE
-  ROOTFS_BASE=$(yq ".distro.rootfs" $DISTRO_FILE) || return
+  ALPINE_VERSION=$(yq ".distro.alpine.version" $DISTRO_FILE) || return
   VIRT_BACKEND=$(yq ".distro.virt.backend" $DISTRO_FILE) || return
   OSTREE_REPO=$(yq ".distro.ostree.repo" $DISTRO_FILE) || return
   OSTREE_MANIFEST=$(yq ".distro.ostree.manifest" $DISTRO_FILE) || return
@@ -426,7 +422,7 @@ parse_distro() {
   DISTRO_VERSION_MINOR=$(yq ".distro.version.minor" $DISTRO_FILE) || return
   DISTRO_VERSION_PATCH=$(yq ".distro.version.patch" $DISTRO_FILE) || return
 
-  set_conf "ROOTFS_BASE=$ROOTFS_BASE"
+  set_conf "ALPINE_VERSION=$ALPINE_VERSION"
   set_conf "VIRT_BACKEND=$VIRT_BACKEND"
   set_conf "OSTREE_REPO=$OSTREE_REPO"
   set_conf "OSTREE_MANIFEST=$OSTREE_MANIFEST"
@@ -439,6 +435,34 @@ parse_distro() {
   set_conf "DISTRO_VERSION_MAJOR=$DISTRO_VERSION_MAJOR"
   set_conf "DISTRO_VERSION_MINOR=$DISTRO_VERSION_MINOR"
   set_conf "DISTRO_VERSION_PATCH=$DISTRO_VERSION_PATCH"
+}
+
+###
+### Reuse existing upd8 files or generate new ones
+###
+set_upd8_files() {
+  [ -f "${THIS_DIR}/build/cache/$UPD8_KEYS" ] && \
+    cp "${THIS_DIR}/build/cache/$UPD8_KEYS" "${THIS_DIR}/rootfs"
+  [ -f "${THIS_DIR}/build/cache/$UPD8_MACHINE_REG_TOKEN" ] && \
+    cp "${THIS_DIR}/build/cache/$UPD8_MACHINE_REG_TOKEN" "${THIS_DIR}/rootfs"
+
+  if [ ! -f "${UPD8_KEYS}" ]; then
+    # Generate upd8 private key if missing
+    LOG_DBG "Generating new upd8 keys..."
+    rage-keygen -o "${UPD8_KEYS}"
+    cp "${UPD8_KEYS}" "${THIS_DIR}/build/cache/"
+
+    # Generate machine registration token
+    if [ -z "${MACHINE_REG_TOKEN_SECRET}" ]; then
+      LOG_WRN "Machine registration token not set, automatic registration won't work!"
+    else
+      if [ ! -f "${UPD8_MACHINE_REG_TOKEN}" ]; then
+        PUBLIC_KEY=$(grep "# public key:" "${UPD8_KEYS}" | cut -d" " -f4)
+        echo "${MACHINE_REG_TOKEN_SECRET}" | rage -e -o "${UPD8_MACHINE_REG_TOKEN}" -r "${PUBLIC_KEY}"
+        cp "${UPD8_MACHINE_REG_TOKEN}" "${THIS_DIR}/build/cache/"
+      fi
+    fi
+  fi
 }
 
 init || return 1

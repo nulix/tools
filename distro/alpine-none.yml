@@ -1,7 +1,8 @@
 distro:
-  rootfs: "alpine"
+  alpine:
+    version: 3.22.2
   virt:
-    backend: "docker"
+    backend: "none"
   ostree:
     repo: "ostree_repo"
     manifest: "ostree_manifest"
