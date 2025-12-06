@@ -355,8 +355,16 @@ _yq() {
 ### Set parsed config to local file
 ###
 set_conf() {
-  LOG_DBG "$@"
-  echo "$@" >> "$THIS_DIR/build/conf/local.conf"
+    local key_value="$1"
+
+    # Extract the part after '='
+    local value="${1#*=}"
+
+    # Skip if value is empty
+    [ -z "$value" ] && return
+
+    LOG_DBG "$key_value"
+    echo "$key_value" >> "$THIS_DIR/build/conf/local.conf"
 }
 
 ###
@@ -374,7 +382,7 @@ parse_machine() {
   UBOOT_BRANCH=$(yq ".machine.uboot.branch" $MACHINE_FILE) || return
   UBOOT_REV=$(yq ".machine.uboot.rev" $MACHINE_FILE) || return
   UBOOT_DEFCONFIG=$(yq ".machine.uboot.defconfig" $MACHINE_FILE) || return
-  UBOOT_IMAGES=$(yq '.machine.uboot.images | join(" ")' $MACHINE_FILE) || return
+  UBOOT_IMAGES=$(yq '(.machine.uboot.images // []) | join(" ")' "$MACHINE_FILE") || return
   KERNEL_REPO=$(yq ".machine.kernel.repo" $MACHINE_FILE) || return
   KERNEL_BRANCH=$(yq ".machine.kernel.branch" $MACHINE_FILE) || return
   KERNEL_REV=$(yq ".machine.kernel.rev" $MACHINE_FILE) || return
