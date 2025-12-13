@@ -89,8 +89,10 @@ build_rootfs() {
     --build-arg VIRT_BACKEND="$VIRT_BACKEND" \
     --build-arg SERIAL_PORT="$SERIAL_PORT" \
     --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
-    --build-arg UPD8_KEYS_FILE="$UPD8_KEYS" \
-    --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN" \
+    --build-arg UPD8_KEYS_FILE="$UPD8_KEYS_FILE" \
+    --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN_FILE" \
+    --build-arg SSL_CERT="$SSL_CERT" \
+    --build-arg SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" |
@@ -129,8 +131,10 @@ build_rootfs_docker_image() {
     --build-arg VIRT_BACKEND="$VIRT_BACKEND" \
     --build-arg SERIAL_PORT="$SERIAL_PORT" \
     --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
-    --build-arg UPD8_KEYS_FILE="$UPD8_KEYS" \
-    --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN" \
+    --build-arg UPD8_KEYS_FILE="$UPD8_KEYS_FILE" \
+    --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN_FILE" \
+    --build-arg SSL_CERT="$SSL_CERT" \
+    --build-arg SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
@@ -177,8 +181,8 @@ build_ostree_repo() {
   rm -rf "../build/deploy/$MACHINE/$OSTREE_REPO" \
     "../build/deploy/$MACHINE/$OSTREE_MANIFEST" \
     "../build/deploy/$MACHINE/$OSTREE_REPO.tar.gz" \
-    "$UPD8_KEYS" \
-    "$UPD8_MACHINE_REG_TOKEN"
+    "$UPD8_KEYS_FILE" \
+    "$UPD8_MACHINE_REG_TOKEN_FILE"
   cp -r "$OSTREE_REPO" "../build/deploy/$MACHINE"
   mv "$OSTREE_REPO.tar.gz" "$OSTREE_MANIFEST" "../build/deploy/$MACHINE"
   cd "${THIS_DIR}" || return
@@ -424,8 +428,8 @@ parse_distro() {
   OSTREE_SUMMARY=$(yq ".distro.ostree.summary" $DISTRO_FILE) || return
   OSTREE_OTA_SYSROOT=$(yq ".distro.ostree.ota-sysroot" $DISTRO_FILE) || return
   OSTREE_OSNAME=$(yq ".distro.ostree.os-name" $DISTRO_FILE) || return
-  UPD8_KEYS=$(yq ".distro.upd8.keys" $DISTRO_FILE) || return
-  UPD8_MACHINE_REG_TOKEN=$(yq ".distro.upd8.machine-reg-token" $DISTRO_FILE) || return
+  UPD8_KEYS_FILE=$(yq ".distro.upd8.keys" $DISTRO_FILE) || return
+  UPD8_MACHINE_REG_TOKEN_FILE=$(yq ".distro.upd8.machine-reg-token" $DISTRO_FILE) || return
   DISTRO_VERSION_MAJOR=$(yq ".distro.version.major" $DISTRO_FILE) || return
   DISTRO_VERSION_MINOR=$(yq ".distro.version.minor" $DISTRO_FILE) || return
   DISTRO_VERSION_PATCH=$(yq ".distro.version.patch" $DISTRO_FILE) || return
@@ -438,8 +442,8 @@ parse_distro() {
   set_conf "OSTREE_SUMMARY=$OSTREE_SUMMARY"
   set_conf "OSTREE_OTA_SYSROOT=$OSTREE_OTA_SYSROOT"
   set_conf "OSTREE_OSNAME=$OSTREE_OSNAME"
-  set_conf "UPD8_KEYS=$UPD8_KEYS"
-  set_conf "UPD8_MACHINE_REG_TOKEN=$UPD8_MACHINE_REG_TOKEN"
+  set_conf "UPD8_KEYS_FILE=$UPD8_KEYS_FILE"
+  set_conf "UPD8_MACHINE_REG_TOKEN_FILE=$UPD8_MACHINE_REG_TOKEN_FILE"
   set_conf "DISTRO_VERSION_MAJOR=$DISTRO_VERSION_MAJOR"
   set_conf "DISTRO_VERSION_MINOR=$DISTRO_VERSION_MINOR"
   set_conf "DISTRO_VERSION_PATCH=$DISTRO_VERSION_PATCH"
@@ -449,25 +453,29 @@ parse_distro() {
 ### Reuse existing upd8 files or generate new ones
 ###
 set_upd8_files() {
-  [ -f "${THIS_DIR}/build/cache/$UPD8_KEYS" ] && \
-    cp "${THIS_DIR}/build/cache/$UPD8_KEYS" "${THIS_DIR}/rootfs"
-  [ -f "${THIS_DIR}/build/cache/$UPD8_MACHINE_REG_TOKEN" ] && \
-    cp "${THIS_DIR}/build/cache/$UPD8_MACHINE_REG_TOKEN" "${THIS_DIR}/rootfs"
+  if [ -n "${UPD8_KEYS}" ] && [ ! -f "${THIS_DIR}/build/cache/${UPD8_KEYS_FILE}" ]; then
+    echo "${UPD8_KEYS}" > "${THIS_DIR}/build/cache/${UPD8_KEYS_FILE}"
+  fi
 
-  if [ ! -f "${UPD8_KEYS}" ]; then
+  [ -f "${THIS_DIR}/build/cache/${UPD8_KEYS_FILE}" ] && \
+    cp "${THIS_DIR}/build/cache/${UPD8_KEYS_FILE}" "${THIS_DIR}/rootfs"
+  [ -f "${THIS_DIR}/build/cache/${UPD8_MACHINE_REG_TOKEN_FILE}" ] && \
+    cp "${THIS_DIR}/build/cache/${UPD8_MACHINE_REG_TOKEN_FILE}" "${THIS_DIR}/rootfs"
+
+  if [ ! -f "${UPD8_KEYS_FILE}" ]; then
     # Generate upd8 private key if missing
     LOG_DBG "Generating new upd8 keys..."
-    rage-keygen -o "${UPD8_KEYS}"
-    cp "${UPD8_KEYS}" "${THIS_DIR}/build/cache/"
+    rage-keygen -o "${UPD8_KEYS_FILE}"
+    cp "${UPD8_KEYS_FILE}" "${THIS_DIR}/build/cache/"
 
     # Generate machine registration token
-    if [ -z "${MACHINE_REG_TOKEN_SECRET}" ]; then
+    if [ -z "${MACHINE_REG_TOKEN}" ]; then
       LOG_WRN "Machine registration token not set, automatic registration won't work!"
     else
-      if [ ! -f "${UPD8_MACHINE_REG_TOKEN}" ]; then
-        PUBLIC_KEY=$(grep "# public key:" "${UPD8_KEYS}" | cut -d" " -f4)
-        echo "${MACHINE_REG_TOKEN_SECRET}" | rage -e -o "${UPD8_MACHINE_REG_TOKEN}" -r "${PUBLIC_KEY}"
-        cp "${UPD8_MACHINE_REG_TOKEN}" "${THIS_DIR}/build/cache/"
+      if [ ! -f "${UPD8_MACHINE_REG_TOKEN_FILE}" ]; then
+        PUBLIC_KEY=$(grep "# public key:" "${UPD8_KEYS_FILE}" | cut -d" " -f4)
+        echo "${MACHINE_REG_TOKEN}" | rage -e -o "${UPD8_MACHINE_REG_TOKEN_FILE}" -r "${PUBLIC_KEY}"
+        cp "${UPD8_MACHINE_REG_TOKEN_FILE}" "${THIS_DIR}/build/cache/"
       fi
     fi
   fi
