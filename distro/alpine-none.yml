@@ -11,6 +11,7 @@ distro:
     ota-sysroot: "ota-sysroot"
     os-name: "nulix"
   upd8:
+    api-url: "https://api.nulix.io"
     keys: "key.txt"
     machine-reg-token: "token.age"
   version:
