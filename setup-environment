@@ -47,7 +47,7 @@ build_bsp() {
     --build-arg KERNEL_REV="$KERNEL_REV" \
     --build-arg KERNEL_DEFCONFIG="$KERNEL_DEFCONFIG" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" ||
-    return
+    { cd "${THIS_DIR}" || true; return 1; }
 
   rm -f ../build/deploy/$MACHINE/boot-artifacts-*.tar.gz \
     ../build/deploy/$MACHINE/kernel-artifacts-*.tar.gz \
@@ -98,7 +98,7 @@ build_rootfs() {
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" |
     gzip > nulix-rootfs-"$DISTRO_VERSION_MAJOR"."$DISTRO_VERSION_MINOR"."$DISTRO_VERSION_PATCH".tar.gz ||
-    return
+    { cd "${THIS_DIR}" || true; return 1; }
 
   rm -f ../build/deploy/"$MACHINE"/nulix-rootfs-*.tar.gz
   # The rootfs image is needed in this dir for the ostree_repo build
@@ -141,7 +141,7 @@ build_rootfs_docker_image() {
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
     --build-arg DISTRO_VERSION_PATCH="$DISTRO_VERSION_PATCH" \
     -t nulix-rootfs:$DISTRO_VERSION_MAJOR.$DISTRO_VERSION_MINOR.$DISTRO_VERSION_PATCH ||
-    return
+    { cd "${THIS_DIR}" || true; return 1; }
 
   cd "${THIS_DIR}" || return
 
@@ -167,7 +167,7 @@ build_ostree_repo() {
     OSTREE_COMMIT_MSG_BUILD_ARG="NONE"
   fi
 
-  docker build --platform linux/$MACHINE_ARCH $NO_CACHE $VERBOSE -f Dockerfile.ostree_repo . -o . \
+  docker build --platform linux/$MACHINE_ARCH $NO_CACHE $VERBOSE -f ostree-repo/Dockerfile . -o . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg DISTRO_VERSION_MAJOR="$DISTRO_VERSION_MAJOR" \
     --build-arg DISTRO_VERSION_MINOR="$DISTRO_VERSION_MINOR" \
@@ -177,7 +177,7 @@ build_ostree_repo() {
     --build-arg OSTREE_ROOTFS="$OSTREE_ROOTFS" \
     --build-arg OSTREE_UPDATE_SUMMARY="$OSTREE_SUMMARY" \
     --build-arg "$OSTREE_COMMIT_MSG_BUILD_ARG" ||
-    return
+    { cd "${THIS_DIR}" || true; return 1; }
 
   # The $OSTREE_REPO dir is needed for next build to keep the commit history
   rm -rf "../build/deploy/$MACHINE/$OSTREE_REPO" \
@@ -209,7 +209,7 @@ mk_image() {
   cd "${THIS_DIR}/build/deploy/$MACHINE" || return
   rm -f Dockerfile.disk-image \
     nulix-os*.img.bz2
-  cp "${THIS_DIR}/tools/Dockerfile.disk-image" .
+  cp "${THIS_DIR}/tools/disk-image/Dockerfile" Dockerfile.disk-image
 
   docker build $NO_CACHE $VERBOSE -f Dockerfile.disk-image . -o . \
     --build-arg MACHINE="$MACHINE" \
@@ -221,7 +221,7 @@ mk_image() {
     --build-arg OTA_SYSROOT="$OSTREE_OTA_SYSROOT" \
     --build-arg OSTREE_OSNAME="$OSTREE_OSNAME" \
     --build-arg UBOOT_IMAGES="$UBOOT_IMAGES" ||
-    return
+    { cd "${THIS_DIR}" || true; return 1; }
 
   rm Dockerfile.disk-image
   cd "${THIS_DIR}" || return
