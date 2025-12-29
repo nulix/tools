@@ -35,7 +35,7 @@ build_bsp() {
 
   cd "${THIS_DIR}/bsp" || return
 
-  docker build $NO_CACHE $VERBOSE -f Dockerfile.$MACHINE . -o . \
+  docker build $NO_CACHE $VERBOSE -f machines/$MACHINE/Dockerfile . -o . \
     --build-arg MACHINE="$MACHINE" \
     --build-arg ARCH="$MACHINE_ARCH" \
     --build-arg UBOOT_REPO="$UBOOT_REPO" \
@@ -49,16 +49,17 @@ build_bsp() {
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" ||
     { cd "${THIS_DIR}" || true; return 1; }
 
-  rm -f ../build/deploy/$MACHINE/boot-artifacts-*.tar.gz \
-    ../build/deploy/$MACHINE/kernel-artifacts-*.tar.gz \
-    ../build/deploy/$MACHINE/kernel-modules-*.tar.gz
-  mv boot-artifacts-*.tar.gz ../build/deploy/$MACHINE
-  mv kernel-artifacts-*.tar.gz ../build/deploy/$MACHINE
-  mv kernel-modules-*.tar.gz ../build/deploy/$MACHINE
+  rm -f ${THIS_DIR}/build/deploy/${MACHINE}/boot-artifacts-*.tar.gz \
+    ${THIS_DIR}/build/deploy/${MACHINE}/kernel-artifacts-*.tar.gz \
+    ${THIS_DIR}/build/deploy/${MACHINE}/kernel-modules-*.tar.gz
+  mv boot-artifacts-*.tar.gz ${THIS_DIR}/build/deploy/${MACHINE}
+  mv kernel-artifacts-*.tar.gz ${THIS_DIR}/build/deploy/${MACHINE}
+  mv kernel-modules-*.tar.gz ${THIS_DIR}/build/deploy/${MACHINE}
   cd "${THIS_DIR}" || return
 
   rm -f rootfs/machine/$MACHINE/kernel-artifacts-*.tar.gz \
     rootfs/machine/$MACHINE/kernel-modules-*.tar.gz
+  mkdir -p rootfs/machine/$MACHINE
   cp build/deploy/$MACHINE/kernel-artifacts-*.tar.gz rootfs/machine/$MACHINE
   cp build/deploy/$MACHINE/kernel-modules-*.tar.gz rootfs/machine/$MACHINE
 
@@ -86,9 +87,13 @@ build_rootfs() {
     --build-arg ALPINE_VERSION="$ALPINE_VERSION" \
     --build-arg HOSTNAME="$HOSTNAME" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
-    --build-arg VIRT_BACKEND="$VIRT_BACKEND" \
+    --build-arg VIRT_TECH="$VIRT_TECH" \
+    --build-arg UBOOT_ENV_SIZE="$UBOOT_ENV_SIZE" \
     --build-arg SERIAL_PORT="$SERIAL_PORT" \
     --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
+    --build-arg NETWORK_INTERFACE="$NETWORK_INTERFACE" \
+    --build-arg NETWORK_DHCP="$NETWORK_DHCP" \
+    --build-arg BOOT_DEV_PART="$BOOT_DEV_PART" \
     --build-arg UPD8_API_URL="$UPD8_API_URL" \
     --build-arg UPD8_KEYS_FILE="$UPD8_KEYS_FILE" \
     --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN_FILE" \
@@ -129,9 +134,13 @@ build_rootfs_docker_image() {
     --build-arg ALPINE_VERSION="$ALPINE_VERSION" \
     --build-arg HOSTNAME="$HOSTNAME" \
     --build-arg KERNEL_IMAGE="$KERNEL_IMAGE" \
-    --build-arg VIRT_BACKEND="$VIRT_BACKEND" \
+    --build-arg VIRT_TECH="$VIRT_TECH" \
+    --build-arg UBOOT_ENV_SIZE="$UBOOT_ENV_SIZE" \
     --build-arg SERIAL_PORT="$SERIAL_PORT" \
     --build-arg SERIAL_BAUD="$SERIAL_BAUD" \
+    --build-arg NETWORK_INTERFACE="$NETWORK_INTERFACE" \
+    --build-arg NETWORK_DHCP="$NETWORK_DHCP" \
+    --build-arg BOOT_DEV_PART="$BOOT_DEV_PART" \
     --build-arg UPD8_API_URL="$UPD8_API_URL" \
     --build-arg UPD8_KEYS_FILE="$UPD8_KEYS_FILE" \
     --build-arg UPD8_MACHINE_REG_TKN_FILE="$UPD8_MACHINE_REG_TOKEN_FILE" \
@@ -316,27 +325,24 @@ init() {
     return 1
   fi
 
-  # Set the machine
-  DEFAULT_MACHINE="rpi3"
-  if [ -z "$MACHINE" ]; then
-    MACHINE="$DEFAULT_MACHINE"
+  if [ ! -f "$THIS_DIR/bsp/machines/$MACHINE/$MACHINE.yml" ]; then
+    LOG_ERR "machine file not found for $MACHINE, aborting!"
+    return 1
   fi
 
-  if [ ! -f "$THIS_DIR/tools/machine/$MACHINE.yml" ]; then
-    LOG_WRN "machine file not found for $MACHINE, defaulting to $DEFAULT_MACHINE"
-    MACHINE="$DEFAULT_MACHINE"
+  if ! find "$THIS_DIR/distro/" -name "$DISTRO.yml" | grep -q .; then
+    LOG_ERR "distro file not found for $DISTRO, aborting!"
+    return 1
+  else
+    DISTRO_FILE=$(find "$THIS_DIR/distro/" -name "$DISTRO.yml")
   fi
 
-  # Set the distro
-  DEFAULT_DISTRO="alpine-docker"
-  if [ -z "$DISTRO" ]; then
-    DISTRO="$DEFAULT_DISTRO"
-  fi
-
-  if [ ! -f "$THIS_DIR/tools/distro/$DISTRO.yml" ]; then
-    LOG_WRN "distro file not found for $DISTRO, defaulting to $DEFAULT_DISTRO"
-    DISTRO="$DEFAULT_DISTRO"
-  fi
+  # Merge distro components
+  cd "$THIS_DIR/distro"
+  yq eval-all '. as $item ireduce ({}; . * $item)' "$DISTRO_FILE" \
+    $(yq '.include[]' "$DISTRO_FILE" | while read -r f; do find . -name "$f" -type f; done) \
+    > "$THIS_DIR/build/conf/distro.yml"
+  cd "$THIS_DIR"
 
   LOG_INF "MACHINE=$MACHINE"
   LOG_INF "DISTRO=$DISTRO"
@@ -377,7 +383,7 @@ set_conf() {
 ### Set machine settings
 ###
 parse_machine() {
-  MACHINE_FILE="tools/machine/$MACHINE.yml"
+  MACHINE_FILE="bsp/machines/$MACHINE/$MACHINE.yml"
 
   # Read values from the $MACHINE_FILE
   MACHINE=$(yq ".machine.name" "$MACHINE_FILE") || return
@@ -388,6 +394,7 @@ parse_machine() {
   UBOOT_BRANCH=$(yq ".machine.uboot.branch" "$MACHINE_FILE") || return
   UBOOT_REV=$(yq ".machine.uboot.rev" "$MACHINE_FILE") || return
   UBOOT_DEFCONFIG=$(yq ".machine.uboot.defconfig" "$MACHINE_FILE") || return
+  UBOOT_ENV_SIZE=$(yq ".machine.uboot.env_size" "$MACHINE_FILE") || return
   UBOOT_IMAGES=$(yq '(.machine.uboot.images // []) | join(" ")' "$MACHINE_FILE") || return
   KERNEL_REPO=$(yq ".machine.kernel.repo" "$MACHINE_FILE") || return
   KERNEL_BRANCH=$(yq ".machine.kernel.branch" "$MACHINE_FILE") || return
@@ -396,6 +403,11 @@ parse_machine() {
   KERNEL_IMAGE=$(yq ".machine.kernel.image" "$MACHINE_FILE") || return
   SERIAL_PORT=$(yq ".machine.serial.port" "$MACHINE_FILE") || return
   SERIAL_BAUD=$(yq ".machine.serial.baud" "$MACHINE_FILE") || return
+  NETWORK_INTERFACE=$(yq ".machine.network.interface" "$MACHINE_FILE") || return
+  NETWORK_DHCP=$(yq ".machine.network.dhcp" "$MACHINE_FILE") || return
+  BOOT_DEVICE=$(yq ".machine.boot.device" "$MACHINE_FILE") || return
+  BOOT_PARTITION=$(yq ".machine.boot.partition" "$MACHINE_FILE") || return
+  BOOT_DEV_PART="${BOOT_DEVICE}${BOOT_PARTITION}"
 
   set_conf "MACHINE=$MACHINE"
   set_conf "MACHINE_ARCH=$MACHINE_ARCH"
@@ -405,6 +417,7 @@ parse_machine() {
   set_conf "UBOOT_BRANCH=$UBOOT_BRANCH"
   set_conf "UBOOT_REV=$UBOOT_REV"
   set_conf "UBOOT_DEFCONFIG=$UBOOT_DEFCONFIG"
+  set_conf "UBOOT_ENV_SIZE=$UBOOT_ENV_SIZE"
   set_conf "UBOOT_IMAGES=$UBOOT_IMAGES"
   set_conf "KERNEL_REPO=$KERNEL_REPO"
   set_conf "KERNEL_BRANCH=$KERNEL_BRANCH"
@@ -413,17 +426,22 @@ parse_machine() {
   set_conf "KERNEL_IMAGE=$KERNEL_IMAGE"
   set_conf "SERIAL_PORT=$SERIAL_PORT"
   set_conf "SERIAL_BAUD=$SERIAL_BAUD"
+  set_conf "NETWORK_INTERFACE=$NETWORK_INTERFACE"
+  set_conf "NETWORK_DHCP=$NETWORK_DHCP"
+  set_conf "BOOT_DEVICE=$BOOT_DEVICE"
+  set_conf "BOOT_PARTITION=$BOOT_PARTITION"
+  set_conf "BOOT_DEV_PART=$BOOT_DEV_PART"
 }
 
 ###
 ### Set distro settings
 ###
 parse_distro() {
-  DISTRO_FILE="tools/distro/$DISTRO.yml"
+  DISTRO_FILE="$THIS_DIR/build/conf/distro.yml"
 
   # Read values from the $DISTRO_FILE
   ALPINE_VERSION=$(yq ".distro.alpine.version" "$DISTRO_FILE") || return
-  VIRT_BACKEND=$(yq ".distro.virt.backend" "$DISTRO_FILE") || return
+  VIRT_TECH=$(yq ".distro.virt.tech" "$DISTRO_FILE") || return
   OSTREE_REPO=$(yq ".distro.ostree.repo" "$DISTRO_FILE") || return
   OSTREE_MANIFEST=$(yq ".distro.ostree.manifest" "$DISTRO_FILE") || return
   OSTREE_ROOTFS=$(yq ".distro.ostree.rootfs" "$DISTRO_FILE") || return
@@ -438,7 +456,7 @@ parse_distro() {
   DISTRO_VERSION_PATCH=$(yq ".distro.version.patch" "$DISTRO_FILE") || return
 
   set_conf "ALPINE_VERSION=$ALPINE_VERSION"
-  set_conf "VIRT_BACKEND=$VIRT_BACKEND"
+  set_conf "VIRT_TECH=$VIRT_TECH"
   set_conf "OSTREE_REPO=$OSTREE_REPO"
   set_conf "OSTREE_MANIFEST=$OSTREE_MANIFEST"
   set_conf "OSTREE_ROOTFS=$OSTREE_ROOTFS"
