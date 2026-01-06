@@ -337,13 +337,6 @@ init() {
     DISTRO_FILE=$(find "$THIS_DIR/distro/" -name "$DISTRO.yml")
   fi
 
-  # Merge distro components
-  cd "$THIS_DIR/distro"
-  yq eval-all '. as $item ireduce ({}; . * $item)' "$DISTRO_FILE" \
-    $(yq '.include[]' "$DISTRO_FILE" | while read -r f; do find . -name "$f" -type f; done) \
-    > "$THIS_DIR/build/conf/distro.yml"
-  cd "$THIS_DIR"
-
   LOG_INF "MACHINE=$MACHINE"
   LOG_INF "DISTRO=$DISTRO"
 
@@ -354,6 +347,13 @@ init() {
   mkdir -p "$THIS_DIR/build/deploy"
   mkdir -p "$THIS_DIR/build/deploy/$MACHINE"
   rm -f "$THIS_DIR/build/conf/local.conf"
+
+  # Merge distro components
+  cd "$THIS_DIR/distro"
+  yq eval-all '. as $item ireduce ({}; . * $item)' "$DISTRO_FILE" \
+    $(yq '.include[]' "$DISTRO_FILE" | while read -r f; do find . -name "$f" -type f; done) \
+    > "$THIS_DIR/build/conf/distro.yml"
+  cd "$THIS_DIR"
 }
 
 ###
